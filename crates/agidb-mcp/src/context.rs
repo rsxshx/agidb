@@ -108,4 +108,19 @@ impl AgidbContext {
         let store = self.store.lock().expect("store mutex poisoned");
         store.get_episode(EpisodeId::new(id))
     }
+
+    /// Run a read-only closure against the store.
+    pub fn with_store<T>(&self, f: impl FnOnce(&Store) -> AgidbResult<T>) -> AgidbResult<T> {
+        let store = self.store.lock().expect("store mutex poisoned");
+        f(&store)
+    }
+
+    /// Run a mutating closure against the store.
+    pub fn with_store_mut<T>(
+        &self,
+        f: impl FnOnce(&mut Store) -> AgidbResult<T>,
+    ) -> AgidbResult<T> {
+        let mut store = self.store.lock().expect("store mutex poisoned");
+        f(&mut store)
+    }
 }

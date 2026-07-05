@@ -262,4 +262,28 @@ mod tests {
         assert_eq!(tool_for_phase("recall"), "memory_recall");
         assert_eq!(tool_for_phase("consolidate"), "memory_consolidate");
     }
+
+    #[test]
+    fn every_demo_phase_maps_to_a_registered_tool() {
+        let registered: Vec<String> = agidb_mcp::tools::list()
+            .into_iter()
+            .map(|t| t.name)
+            .collect();
+        for phase in [
+            "observe",
+            "recall",
+            "consolidate",
+            "set_goal",
+            "assert_belief",
+            "revise_belief",
+            "stats",
+            "unlearn",
+        ] {
+            let tool = tool_for_phase(phase);
+            assert!(
+                registered.iter().any(|n| n == tool),
+                "phase {phase} maps to unregistered tool {tool}"
+            );
+        }
+    }
 }

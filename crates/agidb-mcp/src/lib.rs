@@ -1,7 +1,20 @@
 //! agidb MCP server — a stdio JSON-RPC server exposing the agidb engine
-//! as MCP tools (`memory_observe`, `memory_recall`, `memory_consolidate`,
-//! `memory_get_episode`) to Claude Desktop, Cursor, and other
-//! MCP-compatible agents.
+//! as MCP tools to Claude Desktop, Cursor, and other MCP-compatible
+//! agents. Exposed tools:
+//!
+//! - `memory_observe` — record an observation
+//! - `memory_recall` — tiered retrieval
+//! - `memory_consolidate` — run one consolidation pass
+//! - `memory_get_episode` — fetch one episode
+//! - `memory_set_goal` — create a first-class goal
+//! - `memory_active_goals` — list active goals
+//! - `memory_assert_belief` — assert a revisable belief
+//! - `memory_revise_belief` — revise a belief with episode evidence
+//! - `memory_beliefs` — list beliefs
+//! - `memory_unlearn` — cascading unlearn with audit + 30-day restore window
+//! - `memory_what_did_i_learn` — introspect the learning log
+//! - `memory_stats` — store-wide counts
+//! - `memory_sense` — floor-1 sensory frame with surprise-gated promotion
 //!
 //! Phase 5 of the agidb v2 build. See
 //! `docs/phases/phase-5-mcp-python.md`.

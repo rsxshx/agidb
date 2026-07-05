@@ -10,9 +10,11 @@ use crate::signatures::SignatureFile;
 use crate::types::*;
 use chrono::{DateTime, Duration, Utc};
 use redb::{
-    Database, MultimapTableDefinition, ReadableTable, ReadableTableMetadata, TableDefinition,
+    Database, MultimapTableDefinition, ReadableMultimapTable, ReadableTable, ReadableTableMetadata,
+    TableDefinition,
 };
 use roaring::RoaringBitmap;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Write};
 use std::path::PathBuf;
@@ -109,7 +111,7 @@ pub struct ConsolidationLogEntry {
 }
 
 /// A snapshot of store-wide counts. Returned by [`Store::stats`].
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Stats {
     pub episodes: u64,
     pub concepts: u64,

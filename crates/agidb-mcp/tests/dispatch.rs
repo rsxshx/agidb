@@ -152,3 +152,151 @@ fn invalid_tool_args_return_typed_error() {
     // memory_observe requires `text`; missing field is an InvalidParams.
     assert_eq!(err.code, -32602);
 }
+
+fn tool_payload(resp: serde_json::Value) -> Value {
+    let text = resp["content"][0]["text"]
+        .as_str()
+        .expect("text content")
+        .to_string();
+    serde_json::from_str(&text).expect("inner json")
+}
+
+#[test]
+fn goal_belief_unlearn_stats_tools_round_trip() {
+    let (server, _d) = fresh_server();
+
+    // set_goal → goal_id
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_set_goal", "arguments": { "description": "find a thai place for the team dinner" } }),
+        ))
+        .expect("set_goal");
+    let v = tool_payload(r.result.expect("result"));
+    let goal_id = v["goal_id"].as_u64().expect("goal_id");
+    assert!(goal_id >= 1);
+
+    // active_goals lists it
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_active_goals", "arguments": {} }),
+        ))
+        .expect("active_goals");
+    let v = tool_payload(r.result.expect("result"));
+    assert_eq!(v["goals"].as_array().unwrap().len(), 1);
+
+    // assert_belief → belief_id
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_assert_belief", "arguments": { "claim": "Sarah likes thai food", "confidence": 0.8 } }),
+        ))
+        .expect("assert_belief");
+    let v = tool_payload(r.result.expect("result"));
+    let belief_id = v["belief_id"].as_u64().expect("belief_id");
+
+    // observe an episode to use as revision evidence
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_observe", "arguments": { "text": "Sarah ordered pad thai again" } }),
+        ))
+        .expect("observe");
+    let episode_id = tool_payload(r.result.expect("result"))["episode_id"]
+        .as_u64()
+        .unwrap();
+
+    // revise_belief (supporting evidence) → confidence rises
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({
+                "name": "memory_revise_belief",
+                "arguments": {
+                    "belief_id": belief_id,
+                    "evidence_episode_id": episode_id,
+                    "supports": true,
+                    "reason": "she ordered it again"
+                }
+            }),
+        ))
+        .expect("revise_belief");
+    let v = tool_payload(r.result.expect("result"));
+    assert!(
+        v["new_confidence"].as_f64().unwrap() > v["previous_confidence"].as_f64().unwrap(),
+        "supporting evidence must raise confidence"
+    );
+
+    // beliefs list
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_beliefs", "arguments": {} }),
+        ))
+        .expect("beliefs");
+    assert_eq!(
+        tool_payload(r.result.expect("result"))["beliefs"]
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // stats
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_stats", "arguments": {} }),
+        ))
+        .expect("stats");
+    assert_eq!(
+        tool_payload(r.result.expect("result"))["episodes"]
+            .as_u64()
+            .unwrap(),
+        1
+    );
+
+    // what_did_i_learn (default window) is non-empty
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_what_did_i_learn", "arguments": {} }),
+        ))
+        .expect("what_did_i_learn");
+    assert!(!tool_payload(r.result.expect("result"))["events"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    // unlearn the episode
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({
+                "name": "memory_unlearn",
+                "arguments": {
+                    "target_kind": "episode",
+                    "target": episode_id.to_string(),
+                    "reason": "test forget"
+                }
+            }),
+        ))
+        .expect("unlearn");
+    let v = tool_payload(r.result.expect("result"));
+    assert_eq!(v["episodes_removed"].as_u64().unwrap(), 1);
+}
+
+#[test]
+fn sense_tool_promotes_novel_text() {
+    let (server, _d) = fresh_server();
+    let r = server
+        .handle_request(req(
+            "tools/call",
+            json!({ "name": "memory_sense", "arguments": { "text": "novel sensory frame about the tokyo offsite" } }),
+        ))
+        .expect("sense");
+    let v = tool_payload(r.result.expect("result"));
+    assert!(v["surprise"].as_f64().unwrap() >= 0.4);
+    assert!(v["promoted"].as_u64().is_some());
+}
