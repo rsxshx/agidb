@@ -8,6 +8,7 @@
 use agidb_core::episode::{encode_episode_signature, encode_gist_signature};
 use agidb_core::store::{Store, StoreConfig};
 use agidb_core::types::{Episode, EpisodeId, Provenance, Query, Tier, TimeRange, Triple};
+use agidb_core::unlearn::UnlearnTarget;
 use chrono::{Duration, TimeZone, Utc};
 use tempfile::TempDir;
 
@@ -36,6 +37,7 @@ fn make_episode(
         id: ep_id,
         text: text.into(),
         signature_offset: 0,
+        gist_offset: 0,
         triples: vec![Triple {
             subject: subj.into(),
             predicate: pred.into(),
@@ -376,4 +378,177 @@ fn synthetic_100_episodes_recall_smoke() {
     // A vague cue → tier C/D fallback returns *something*.
     let r = store.recall(&Query::cue("dinner plans")).expect("recall");
     assert!(!r.matches.is_empty(), "fallback must produce something");
+}
+
+// --- tier B: structured similarity ------------------------------------------
+
+#[test]
+fn tier_b_matches_case_insensitive_entity_mentions() {
+    // "sarah" (lowercase) misses tier A's case-sensitive concept
+    // lookup but resolves case-insensitively in tier B, whose
+    // structured cue signature overlaps the stored role-bound episode
+    // signature. Distractor entities stay in the ≈0.5 noise band.
+    let (mut store, _dir) = fresh_store();
+    observe_with_encoding(
+        &mut store,
+        make_episode(
+            1,
+            "Sarah recommended Bawri",
+            "Sarah",
+            "recommended",
+            "Bawri",
+            t(2026, 5, 14),
+        ),
+    );
+    for i in 0..10u64 {
+        observe_with_encoding(
+            &mut store,
+            make_episode(
+                100 + i,
+                &format!("Visitor{i} toured Museum{i}"),
+                &format!("Visitor{i}"),
+                "toured",
+                &format!("Museum{i}"),
+                t(2026, 5, 14),
+            ),
+        );
+    }
+
+    let r = store.recall(&Query::cue("sarah")).expect("recall");
+    assert_eq!(
+        r.tier_used,
+        Tier::Similarity,
+        "lowercase entity cue must land tier B, got {:?} with {:?}",
+        r.tier_used,
+        r.matches
+            .iter()
+            .map(|m| (&m.text, m.confidence))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(
+        r.matches[0].episode_id,
+        EpisodeId::new(1),
+        "the Sarah episode must rank first"
+    );
+    assert!(
+        r.matches[0].confidence >= 0.6 && r.matches[0].confidence <= 0.95,
+        "tier B confidence must sit in the [0.6, 0.95] band, got {}",
+        r.matches[0].confidence
+    );
+    assert!(
+        !r.matches.iter().any(|m| m.episode_id != EpisodeId::new(1)),
+        "distractor entities must stay below the tier-B floor"
+    );
+}
+
+#[test]
+fn tier_b_falls_through_when_no_concept_resolves() {
+    let (mut store, _dir) = fresh_store();
+    observe_with_encoding(
+        &mut store,
+        make_episode(
+            1,
+            "the cafe near the park opens at noon every day",
+            "MainCafe",
+            "located_near",
+            "CentralPark",
+            t(2026, 5, 14),
+        ),
+    );
+    // No cue token resolves to a concept even fuzzily → cascade must
+    // reach tier C on gist overlap, not die in tier B.
+    let r = store
+        .recall(&Query::cue("opens at noon every day"))
+        .expect("recall");
+    assert_eq!(r.tier_used, Tier::Gist);
+    assert!(!r.matches.is_empty());
+}
+
+// --- scan directory: tombstones + reopen -------------------------------------
+
+#[test]
+fn tombstoned_episode_excluded_from_every_tier_and_restorable() {
+    let (mut store, _dir) = fresh_store();
+    let id = observe_with_encoding(
+        &mut store,
+        make_episode(
+            1,
+            "the cat sat on the mat",
+            "cat",
+            "sat_on",
+            "mat",
+            t(2026, 5, 14),
+        ),
+    );
+
+    let report = store
+        .unlearn(UnlearnTarget::Episode(id), "test forget")
+        .expect("unlearn");
+    let r = store.recall(&Query::cue("cat sat mat")).expect("recall");
+    assert!(
+        r.matches.is_empty(),
+        "tombstoned episode must be invisible to tiers A-D"
+    );
+
+    store
+        .restore_within_window(report.audit_event_id)
+        .expect("restore");
+    let r = store.recall(&Query::cue("cat sat mat")).expect("recall");
+    assert!(
+        r.matches.iter().any(|m| m.episode_id == id),
+        "restored episode must be recallable again"
+    );
+}
+
+#[test]
+fn recall_works_after_reopen_from_persisted_gist_signatures() {
+    let dir = TempDir::new().expect("tempdir");
+    {
+        let mut store = Store::open(StoreConfig::at(dir.path())).expect("open");
+        observe_with_encoding(
+            &mut store,
+            make_episode(
+                1,
+                "the cafe near the park opens at noon every day",
+                "MainCafe",
+                "located_near",
+                "CentralPark",
+                t(2026, 5, 14),
+            ),
+        );
+    }
+    // Reopen — the scan directory must rebuild from disk and the gist
+    // scan must run off the persisted HVs.
+    let store = Store::open(StoreConfig::at(dir.path())).expect("reopen");
+    let r = store
+        .recall(&Query::cue("cafe park noon opens"))
+        .expect("recall");
+    assert_eq!(r.tier_used, Tier::Gist);
+    assert!(!r.matches.is_empty());
+}
+
+#[test]
+fn gist_hv_not_duplicated_when_signature_is_the_gist() {
+    let (mut store, _dir) = fresh_store();
+    // Extraction-less episode: caller passes the gist as the episode
+    // signature → exactly one HV stored.
+    let mut ep = make_episode(1, "raw text only", "x", "y", "z", t(2026, 5, 14));
+    ep.triples = vec![];
+    let gist = encode_gist_signature("raw text only");
+    store.observe(ep, &gist).expect("observe");
+    assert_eq!(store.stats().expect("stats").signatures, 1);
+
+    // Structured episode: distinct structured + gist HVs → two more.
+    observe_with_encoding(
+        &mut store,
+        make_episode(
+            2,
+            "Sarah recommended Bawri",
+            "Sarah",
+            "recommended",
+            "Bawri",
+            t(2026, 5, 14),
+        ),
+    );
+    assert_eq!(store.stats().expect("stats").signatures, 3);
 }

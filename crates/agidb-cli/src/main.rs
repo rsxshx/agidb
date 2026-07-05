@@ -190,8 +190,14 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Default to `info` but honor `RUST_LOG` so the recording script
+    // (and users debugging) can set `RUST_LOG=error` to silence the
+    // model-manager noise.
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
+        .with_env_filter(filter)
         .init();
 
     let cli = Cli::parse();

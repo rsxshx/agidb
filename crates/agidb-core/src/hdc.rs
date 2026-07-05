@@ -179,6 +179,12 @@ impl HV {
         1.0 - (self.hamming(other) as f32 / D as f32)
     }
 
+    /// Number of set bits. Cached by the store's scan directory so the
+    /// phi scoring path doesn't recount per query.
+    pub fn popcount(&self) -> u32 {
+        self.as_u64s().iter().map(|x| x.count_ones()).sum()
+    }
+
     /// Indices of every set bit, in ascending order. Used by the
     /// inverted-index update path in phase 2.
     pub fn active_dims(&self) -> impl Iterator<Item = u32> + '_ {
@@ -291,4 +297,23 @@ unsafe fn hamming_neon(a: &HV, b: &HV) -> u32 {
     }
     // Horizontal sum across the 8 u16 lanes.
     vaddvq_u16(acc) as u32
+}
+
+/// Phi coefficient (Pearson correlation over binary vectors) from
+/// pre-computed counts. Density-corrected: independent vectors score
+/// ≈ 0 regardless of how sparse either side is, which raw hamming
+/// similarity does not guarantee (majority-bundling an even number of
+/// HVs yields AND-like ~25%-dense vectors that inflate raw agreement).
+///
+/// `n` is the dimensionality (use `D as f64`), `pa`/`pb` the popcounts
+/// of the two vectors, `hamming` their hamming distance. Returns 0.0
+/// for degenerate inputs (all-zero / all-one vectors).
+pub fn phi_from_counts(n: f64, pa: f64, pb: f64, hamming: f64) -> f32 {
+    if pa <= 0.0 || pa >= n || pb <= 0.0 || pb >= n {
+        return 0.0;
+    }
+    let n11 = (pa + pb - hamming) / 2.0;
+    let num = n * n11 - pa * pb;
+    let den = (pa * pb * (n - pa) * (n - pb)).sqrt();
+    (num / den) as f32
 }

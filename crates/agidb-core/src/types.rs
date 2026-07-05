@@ -147,6 +147,12 @@ pub struct Episode {
     pub text: String,
     /// Byte offset into `signatures.dat` where this episode's HV lives.
     pub signature_offset: u64,
+    /// Byte offset into `signatures.dat` where the gist HV of `text`
+    /// lives. Written by `Store::observe` so the tier-C/D scan reads
+    /// stored signatures instead of re-encoding text per query.
+    /// `#[serde(default)]` keeps pre-v2 JSONL exports importable.
+    #[serde(default)]
+    pub gist_offset: u64,
     pub triples: Vec<Triple>,
     pub valid_time: TimeRange,
     /// Transaction time — when agidb learned this fact.

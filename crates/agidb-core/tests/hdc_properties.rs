@@ -1,12 +1,9 @@
 //! Property tests for the HDC algebra.
 //!
-//! These tests encode the algebraic invariants the kernel must satisfy.
-//! The scaffold ships with `todo!()` in `bind`, `bundle`, and `hamming`,
-//! so every test in this file panics at scaffold time — that's the
-//! intentional RED state for phase 1 TDD.
-//!
-//! When implementing phase 1, the goal is to turn every panic in this
-//! file into a green test without weakening any invariant.
+//! These tests encode the algebraic invariants the kernel must satisfy:
+//! bind self-inverse + commutativity, bundle membership + tie-breaking,
+//! hamming symmetry/bounds, and the density-corrected phi coefficient
+//! used by tier-B recall.
 
 use agidb_core::hdc::{D, D_BYTES, HV};
 use proptest::prelude::*;
@@ -145,4 +142,62 @@ fn active_dims_yields_ascending_indices() {
     let hv = HV(bytes);
     let dims: Vec<u32> = hv.active_dims().collect();
     assert_eq!(dims, vec![0, 11, 1023]);
+}
+
+// --- phi coefficient (density-corrected correlation) ------------------------
+
+#[test]
+fn phi_of_identical_vectors_is_one() {
+    let a = HV::from_name("phi-self");
+    let pa = a.popcount() as f64;
+    let phi = agidb_core::hdc::phi_from_counts(D as f64, pa, pa, 0.0);
+    assert!((phi - 1.0).abs() < 1e-3, "phi(x,x) must be ≈1, got {phi}");
+}
+
+#[test]
+fn phi_of_independent_vectors_is_near_zero() {
+    // 50 independent pairs: |phi| must stay within 5σ (σ = 1/√8192 ≈ 0.011).
+    for i in 0..50 {
+        let a = HV::from_name(&format!("phi-a-{i}"));
+        let b = HV::from_name(&format!("phi-b-{i}"));
+        let phi = agidb_core::hdc::phi_from_counts(
+            D as f64,
+            a.popcount() as f64,
+            b.popcount() as f64,
+            a.hamming(&b) as f64,
+        );
+        assert!(phi.abs() < 0.055, "independent pair {i} phi = {phi}");
+    }
+}
+
+#[test]
+fn phi_is_density_robust_where_raw_similarity_is_not() {
+    // AND-bundles are ~25% dense. Raw similarity between two independent
+    // sparse vectors inflates to ≈0.625; phi must stay ≈0.
+    let a = HV::bundle(&[HV::from_name("sparse-a1"), HV::from_name("sparse-a2")]);
+    let b = HV::bundle(&[HV::from_name("sparse-b1"), HV::from_name("sparse-b2")]);
+    let raw = a.similarity(&b);
+    assert!(
+        raw > 0.55,
+        "precondition: raw similarity inflates, got {raw}"
+    );
+    let phi = agidb_core::hdc::phi_from_counts(
+        D as f64,
+        a.popcount() as f64,
+        b.popcount() as f64,
+        a.hamming(&b) as f64,
+    );
+    assert!(
+        phi.abs() < 0.055,
+        "phi must not inflate on sparse pairs, got {phi}"
+    );
+}
+
+#[test]
+fn popcount_counts_set_bits() {
+    assert_eq!(HV::zero().popcount(), 0);
+    let mut bytes = [0u8; D_BYTES];
+    bytes[0] = 0b1010_1010;
+    bytes[1023] = 0xFF;
+    assert_eq!(HV(bytes).popcount(), 12);
 }

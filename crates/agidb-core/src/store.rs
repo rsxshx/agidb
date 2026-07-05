@@ -56,6 +56,14 @@ pub const MANIFEST: TableDefinition<&str, Vec<u8>> = TableDefinition::new("manif
 /// Manifest key for the format version u32.
 const KEY_FORMAT_VERSION: &str = "format_version";
 
+/// On-disk store format version, persisted in the manifest.
+///
+/// v2: `Episode` gained `gist_offset` (a second HV per episode in
+/// `signatures.dat`). v1 stores fail to open with `FormatVersion`;
+/// migrate by exporting JSONL from a v1 build and importing here
+/// (`gist_offset` is `#[serde(default)]` so old exports load).
+pub const STORE_FORMAT_VERSION: u32 = 2;
+
 /// Manifest key for the next-concept-id counter (u64).
 const KEY_NEXT_CONCEPT_ID: &str = "next_concept_id";
 
@@ -84,7 +92,7 @@ impl StoreConfig {
         Self {
             root: root.into(),
             strict: false,
-            format_version: crate::signatures::FORMAT_VERSION,
+            format_version: STORE_FORMAT_VERSION,
         }
     }
 }
@@ -113,12 +121,41 @@ pub struct Stats {
     pub signatures: u64,
 }
 
+/// One row of the in-memory scan directory — the compact per-episode
+/// record the tier-B/C/D scans sweep instead of deserializing full
+/// `Episode` rows out of redb. ~64 bytes per episode; rebuilt from the
+/// `EPISODES` + `TOMBSTONES` tables at open and kept in sync by every
+/// mutation path (`observe`, `supersede`, tombstone write/restore).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ScanEntry {
+    pub id: u64,
+    pub sig_offset: u64,
+    pub gist_offset: u64,
+    /// Cached popcount of the HV at `sig_offset` — used by the tier-B
+    /// phi scoring so the scan does one popcount per pair, not two.
+    pub sig_popcount: u32,
+    pub valid_start: DateTime<Utc>,
+    pub valid_end: Option<DateTime<Utc>>,
+    pub tombstoned: bool,
+}
+
+impl ScanEntry {
+    /// Bi-temporal filter — mirrors `TimeRange::contains`.
+    pub fn valid_at(&self, t: DateTime<Utc>) -> bool {
+        t >= self.valid_start && self.valid_end.map(|e| t <= e).unwrap_or(true)
+    }
+}
+
 /// Owning handle to a agidb store — the redb database + the mmap'd
 /// signatures file held together.
 pub struct Store {
     pub db: Database,
     pub signatures: SignatureFile,
     pub config: StoreConfig,
+    /// In-memory scan directory over every episode (see [`ScanEntry`]).
+    scan_dir: Vec<ScanEntry>,
+    /// `episode_id → index into scan_dir` for O(1) updates.
+    scan_pos: std::collections::HashMap<u64, usize>,
 }
 
 impl Store {
@@ -181,11 +218,88 @@ impl Store {
             tx.commit()?;
         }
 
-        Ok(Self {
+        let mut store = Self {
             db,
             signatures,
             config,
-        })
+            scan_dir: Vec::new(),
+            scan_pos: std::collections::HashMap::new(),
+        };
+        store.rebuild_scan_dir()?;
+        Ok(store)
+    }
+
+    /// Rebuild the in-memory scan directory from the `EPISODES` and
+    /// `TOMBSTONES` tables. One full-table decode, paid once at open.
+    fn rebuild_scan_dir(&mut self) -> Result<()> {
+        let tx = self.db.begin_read()?;
+        let tombstoned: BTreeSet<u64> = {
+            let table = tx.open_table(crate::unlearn::TOMBSTONES)?;
+            let mut set = BTreeSet::new();
+            for entry in table.iter()? {
+                let (k, _) = entry?;
+                let (kind, id) = k.value();
+                if kind == crate::unlearn::TOMBSTONE_EPISODE {
+                    set.insert(id);
+                }
+            }
+            set
+        };
+        let table = tx.open_table(EPISODES)?;
+        self.scan_dir.clear();
+        self.scan_pos.clear();
+        let mut entries: Vec<ScanEntry> = Vec::new();
+        for entry in table.iter()? {
+            let (_, v) = entry?;
+            let ep: Episode = decode(&v.value())?;
+            let sig_popcount = self
+                .signatures
+                .read(ep.signature_offset)
+                .map(|hv| hv.popcount())
+                .unwrap_or(0);
+            entries.push(ScanEntry {
+                id: ep.id.raw(),
+                sig_offset: ep.signature_offset,
+                gist_offset: ep.gist_offset,
+                sig_popcount,
+                valid_start: ep.valid_time.start,
+                valid_end: ep.valid_time.end,
+                tombstoned: tombstoned.contains(&ep.id.raw()),
+            });
+        }
+        for entry in entries {
+            self.scan_push(entry);
+        }
+        Ok(())
+    }
+
+    /// Insert-or-replace a scan-directory entry.
+    fn scan_push(&mut self, entry: ScanEntry) {
+        match self.scan_pos.get(&entry.id) {
+            Some(&pos) => self.scan_dir[pos] = entry,
+            None => {
+                self.scan_pos.insert(entry.id, self.scan_dir.len());
+                self.scan_dir.push(entry);
+            }
+        }
+    }
+
+    /// The scan directory, in insertion order. Read by the recall tiers.
+    pub(crate) fn scan_entries(&self) -> &[ScanEntry] {
+        &self.scan_dir
+    }
+
+    /// Scan-directory entry for one episode, if present.
+    pub(crate) fn scan_entry(&self, id: u64) -> Option<&ScanEntry> {
+        self.scan_pos.get(&id).map(|&pos| &self.scan_dir[pos])
+    }
+
+    /// Flip the tombstone flag on one episode's scan entry. Called by
+    /// the unlearn/restore paths right after they mutate `TOMBSTONES`.
+    pub(crate) fn scan_set_tombstoned(&mut self, id: u64, tombstoned: bool) {
+        if let Some(&pos) = self.scan_pos.get(&id) {
+            self.scan_dir[pos].tombstoned = tombstoned;
+        }
     }
 
     /// Open or create + initialize the self-vector. Convenience wrapper
@@ -205,13 +319,26 @@ impl Store {
     /// caller to supply unique ids. Collisions overwrite (last-writer-
     /// wins) until a phase-4 sequence-counter lands.
     pub fn observe(&mut self, mut episode: Episode, signature: &HV) -> Result<EpisodeId> {
-        // 1. Append the signature outside the redb tx — the mmap and
-        //    redb have independent commit cycles, but the offset is
-        //    only "live" once the redb row that references it commits,
-        //    and a crash before commit leaves at most a junk HV at the
+        // 1. Append the signatures outside the redb tx — the mmap and
+        //    redb have independent commit cycles, but the offsets are
+        //    only "live" once the redb row that references them commits,
+        //    and a crash before commit leaves at most junk HVs at the
         //    tail of signatures.dat (no dangling reference).
+        //
+        //    Two HVs per episode: the caller's structured signature and
+        //    the gist HV of the raw text. Persisting the gist here is
+        //    what lets the tier-C/D scan sweep the mmap instead of
+        //    re-encoding every episode's text per query.
         let offset = self.signatures.append(signature)?;
         episode.signature_offset = offset;
+        let gist = crate::episode::encode_gist_signature(&episode.text);
+        episode.gist_offset = if &gist == signature {
+            // Extraction-less episodes pass the gist *as* the signature;
+            // don't store the same HV twice.
+            offset
+        } else {
+            self.signatures.append(&gist)?
+        };
         let episode_id = episode.id;
         let active_dims: Vec<u32> = signature.active_dims().collect();
 
@@ -281,6 +408,18 @@ impl Store {
         }
         tx.commit()?;
         self.signatures.flush()?;
+
+        // Keep the in-memory scan directory in sync with the row that
+        // just committed.
+        self.scan_push(ScanEntry {
+            id: episode_id.raw(),
+            sig_offset: episode.signature_offset,
+            gist_offset: episode.gist_offset,
+            sig_popcount: signature.popcount(),
+            valid_start: episode.valid_time.start,
+            valid_end: episode.valid_time.end,
+            tombstoned: false,
+        });
 
         // Phase 10 — emit a learning event (after the tx commits so
         // record_event's own write tx doesn't deadlock).
@@ -362,6 +501,7 @@ impl Store {
     /// `valid_time` interval at `newer.valid_time.start - 1ms` and
     /// writes the `superseded_by` link in one transaction.
     pub fn supersede(&mut self, older: EpisodeId, newer: EpisodeId) -> Result<()> {
+        let closed_end;
         let tx = self.db.begin_write()?;
         {
             let mut episodes = tx.open_table(EPISODES)?;
@@ -381,11 +521,15 @@ impl Store {
             let mut older_ep: Episode = decode(&older_bytes)?;
 
             older_ep.superseded_by = Some(newer);
-            older_ep.valid_time.end = Some(newer_ep.valid_time.start - Duration::milliseconds(1));
+            closed_end = newer_ep.valid_time.start - Duration::milliseconds(1);
+            older_ep.valid_time.end = Some(closed_end);
 
             episodes.insert(older.raw(), encode(&older_ep)?)?;
         }
         tx.commit()?;
+        if let Some(&pos) = self.scan_pos.get(&older.raw()) {
+            self.scan_dir[pos].valid_end = Some(closed_end);
+        }
         Ok(())
     }
 

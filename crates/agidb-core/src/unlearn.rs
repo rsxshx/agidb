@@ -31,7 +31,7 @@ pub const TOMBSTONES: TableDefinition<(u8, u64), Vec<u8>> = TableDefinition::new
 /// can reverse a tombstone. After expiry the data may be compacted.
 pub const TOMBSTONE_WINDOW_DAYS: i64 = 30;
 
-const TOMBSTONE_EPISODE: u8 = 0;
+pub(crate) const TOMBSTONE_EPISODE: u8 = 0;
 const TOMBSTONE_BELIEF: u8 = 1;
 const TOMBSTONE_ATOM: u8 = 2;
 
@@ -234,6 +234,9 @@ impl Store {
                 table.remove((kind, id))?;
             }
             tx.commit()?;
+            if kind == TOMBSTONE_EPISODE {
+                self.scan_set_tombstoned(id, false);
+            }
             restored += 1;
         }
         Ok(restored)
@@ -506,6 +509,9 @@ impl Store {
             table.insert((kind, id), encode(&tomb)?)?;
         }
         tx.commit()?;
+        if kind == TOMBSTONE_EPISODE {
+            self.scan_set_tombstoned(id, true);
+        }
         Ok(())
     }
 }

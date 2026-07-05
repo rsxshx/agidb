@@ -37,6 +37,7 @@ fn observe_triple(store: &mut Store, id: u64, subj: &str, pred: &str, obj: &str)
         id: ep_id,
         text: format!("{subj} {pred} {obj}"),
         signature_offset: 0,
+        gist_offset: 0,
         triples,
         valid_time: TimeRange::point(Utc::now()),
         t_tx_start: Utc::now(),
@@ -311,6 +312,7 @@ fn unlearn_by_source_gdpr_article_17() {
         id: EpisodeId::new(1),
         text: "Sarah likes thai".into(),
         signature_offset: 0,
+        gist_offset: 0,
         triples: vec![Triple {
             subject: "Sarah".into(),
             predicate: "likes".into(),

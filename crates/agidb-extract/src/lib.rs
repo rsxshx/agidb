@@ -147,6 +147,7 @@ pub fn observe_text<T: TextExtractor>(
         id: episode_id,
         text: text.to_string(),
         signature_offset: 0, // overwritten by Store::observe
+        gist_offset: 0,      // overwritten by Store::observe
         triples,
         valid_time,
         t_tx_start: Utc::now(),
