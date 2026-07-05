@@ -63,6 +63,14 @@ enum Command {
     /// Run one consolidation pass: cluster episodes, mint semantic atoms,
     /// detect contradictions.
     Consolidate { db: PathBuf },
+    /// Record a sensory frame; promotes to an episode when surprising (floor 1).
+    Sense { db: PathBuf, text: String },
+    /// Show recent sensory frames, newest first.
+    Sensory {
+        db: PathBuf,
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+    },
     /// Fetch a single episode by id.
     Get { db: PathBuf, id: u64 },
     /// List up to `limit` episodes.
@@ -296,6 +304,25 @@ async fn main() -> Result<()> {
             let ag = open(&db, true).await?;
             for ep in ag.list_episodes(limit as usize).await? {
                 println!("ep{} [{:.2}] {}", ep.id.raw(), ep.confidence, ep.text);
+            }
+        }
+        Command::Sense { db, text } => {
+            let ag = open(&db, true).await?;
+            let obs = ag.observe_sensory(text).await?;
+            println!("{}", serde_json::to_string_pretty(&obs)?);
+        }
+        Command::Sensory { db, limit } => {
+            let ag = open(&db, true).await?;
+            for f in ag.sensory_frames(limit).await? {
+                println!(
+                    "[{}] surprise={:.2} promoted={} {}",
+                    f.id,
+                    f.surprise,
+                    f.promoted
+                        .map(|e| e.raw().to_string())
+                        .unwrap_or_else(|| "-".into()),
+                    f.text
+                );
             }
         }
         Command::Stats { db } => {

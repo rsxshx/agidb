@@ -214,6 +214,8 @@ impl Store {
                 let _ = tx.open_table(crate::self_model::SELF_VECTOR_HISTORY)?;
                 // Phase 11 — unlearn tombstones.
                 let _ = tx.open_table(crate::unlearn::TOMBSTONES)?;
+                // Floor 1 — sensory ring buffer.
+                let _ = tx.open_table(crate::sensory::SENSORY_FRAMES)?;
             }
             tx.commit()?;
         }

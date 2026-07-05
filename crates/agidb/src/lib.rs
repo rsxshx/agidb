@@ -632,4 +632,49 @@ impl Agidb {
         .await
         .map_err(|e| agidb_core::AgidbError::Internal(format!("self_vector_history join: {e}")))?
     }
+
+    /// Record a raw sensory frame; promotes to episodic memory when
+    /// surprising. Floor 1.
+    pub async fn observe_sensory(
+        &self,
+        text: impl Into<String> + Send + 'static,
+    ) -> CoreResult<agidb_core::sensory::SensoryObservation> {
+        let store = self.store.clone();
+        let text = text.into();
+        tokio::task::spawn_blocking(move || {
+            let mut store = store.lock().expect("store mutex poisoned");
+            store.observe_sensory(&text)
+        })
+        .await
+        .map_err(|e| agidb_core::AgidbError::Internal(format!("observe_sensory join: {e}")))?
+    }
+
+    /// Surprise score of `text` against recent memory, in [0, 1].
+    pub async fn surprise_score(
+        &self,
+        text: impl Into<String> + Send + 'static,
+    ) -> CoreResult<f32> {
+        let store = self.store.clone();
+        let text = text.into();
+        tokio::task::spawn_blocking(move || {
+            let store = store.lock().expect("store mutex poisoned");
+            store.surprise_score(&text)
+        })
+        .await
+        .map_err(|e| agidb_core::AgidbError::Internal(format!("surprise_score join: {e}")))?
+    }
+
+    /// The most recent sensory frames, newest first.
+    pub async fn sensory_frames(
+        &self,
+        limit: usize,
+    ) -> CoreResult<Vec<agidb_core::sensory::SensoryFrame>> {
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            let store = store.lock().expect("store mutex poisoned");
+            store.sensory_frames(limit)
+        })
+        .await
+        .map_err(|e| agidb_core::AgidbError::Internal(format!("sensory_frames join: {e}")))?
+    }
 }
