@@ -84,3 +84,7 @@
 - **Single-threaded, in-process.** No network, no concurrency, no cold cache. Latency numbers are pure compute cost on warm OS page cache.
 - **Honest losses preserved.** The exact-class and temporal-class rows where agidb loses are not deleted or rationalized; the structural reason for each loss is stated above.
 - **No long-context test.** The corpus has ~10 tokens per document; real memory corpora have paragraphs. Larger-document ingest + recall would need separate measurement.
+
+## End-to-end verification
+
+End-to-end verification passed: 2026-07-05, `fa4ebe0` (HEAD of the 6-commit end-to-end-substrate-fix sequence: `fc592dd` → `656a1cb` → `41e6a38` → `92cbb05` → `b3c7b98` → `fa4ebe0`). Workspace tests: 165 passed, 0 failed. CLI end-to-end demo (`observe` ×3 + `recall` + `sense` duplicate (surprise=0.0, not promoted) + `sense` novel (surprise=0.43, promoted to ep4) + `sensory` + `consolidate` + `stats` shows 4 episodes / 4 signatures) green. MCP stdio `tools/list` over the offline `agidb serve` returns all 13 tools. Format check (`cargo fmt --check`) clean; clippy clean.
