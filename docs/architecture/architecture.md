@@ -326,6 +326,11 @@ Target: **p95 under 50ms** on a laptop with 100k episodes. Zero network calls. N
 
 ## The consolidation loop — `consolidate()`
 
+`consolidate()` is an **explicit pass** invoked by the caller (CLI
+`agidb consolidate <db>`, MCP `memory_consolidate`, or API). The
+self-scheduling background worker that calls it on a cadence is roadmap,
+not in the engine yet.
+
 ```
 1. SCAN         Scan recent episodic signatures (last 7 days).
 

@@ -45,7 +45,7 @@ agidb replaces the six-step pipeline with one local function call, and adds five
 1. **content-addressable storage via hyperdimensional signatures** — memories are 8192-bit binary fingerprints; retrieval is bit-overlap counting, not query parsing
 2. **bi-temporal supersession** — facts don't overwrite, they supersede; query "as of" any historical date
 3. **first-class goals and beliefs** — typed state machines for goals; revisable beliefs with audit trails
-4. **sleep-like consolidation** — surprise-gated background worker that compacts episodic patterns into semantic atoms, decays the unused, flags contradictions
+4. **sleep-like consolidation** — an explicit `consolidate()` pass (CLI/MCP/API) that clusters repeated episodic patterns into semantic atoms and supersedes contradictions; scheduling it in the background is on the roadmap, not in the engine yet
 5. **non-destructive unlearn** — cascading removal with full audit trail; right-to-be-forgotten as a first-class operation
 
 ## key properties
@@ -53,18 +53,28 @@ agidb replaces the six-step pipeline with one local function call, and adds five
 - **embedded.** one Rust binary, runs locally, no server required. like sqlite, not like postgres.
 - **content-addressable.** retrieval by partial cue, not by query. like remembering a song from humming three notes.
 - **bi-temporal by default.** every fact carries valid-time (when true) and transaction-time (when learned). contradictions supersede; nothing is overwritten silently.
-- **all seven cognitive tiers.** sensory, working, episodic, semantic, procedural, goals/beliefs, self-model. all first-class types.
+- **all seven cognitive tiers.** sensory, working, episodic, semantic, procedural, goals/beliefs, self-model — status below.
 - **no LLM in the read path.** recall is deterministic math over stored signatures. zero API keys, zero network calls, zero hallucination at retrieval time. (LLMs may participate at write time for belief revision and consolidation, never at read.)
 - **tiered confidence.** `recall()` never returns empty. exact → similarity → gist → nearest-neighbor, each with explicit confidence scores.
-- **automatic consolidation.** surprise-gated background worker compacts repeated patterns, decays unused memory, flags contradictions, manages its own working set.
+- **consolidation on demand.** `consolidate()` clusters repeated patterns into semantic atoms and flags contradictions. It runs when you call it (CLI, MCP tool, or API); a self-scheduling background worker is roadmap.
 - **non-destructive unlearn.** every fact is removable with a cascading audit log; nothing silently disappears.
 - **full provenance.** every claim traces back to the verbatim observation that produced it. every belief revision logs why. no opaque embeddings, no untraceable facts.
 - **introspectable.** the self-model log records every learning event; the agent can ask "what did I learn this week?"
 - **multimodal-ready (v2.1+).** V-JEPA 2 for video, Wav2Vec-BERT for audio, GLiNER for text — all extracted at write time, fused into one HDC episode signature via VSA binding.
 
+| floor | status |
+|---|---|
+| 1. sensory buffer (surprise-gated) | ✅ shipped |
+| 2. working memory (session-scoped recency) | 🚧 planned |
+| 3. episodic memory (bi-temporal) | ✅ shipped |
+| 4. semantic memory (consolidated atoms) | ✅ shipped |
+| 5. procedural memory | 🚧 types defined, retrieval planned |
+| 6. goals + beliefs | ✅ shipped |
+| 7. self-model (learning log + self-vector) | ✅ shipped |
+
 ## quickstart
 
-install the CLI with one command — works on linux (x86_64 / aarch64) and macOS (Intel / Apple silicon). no dependencies, ~35 MB, ships with the GLiNER extractor so observe runs out of the box.
+install the CLI with one command — works on linux (x86_64 / aarch64) and macOS (Intel / Apple silicon). no dependencies, ~35 MB. The CLI downloads the GLiNER extractor (~hundreds of MB, one time, sha256-verified) on the first `observe`; pass `--offline` to store text-only episodes with zero downloads. `recall`, `consolidate`, and every read-path command never need a model. Relation extraction is currently a curated heuristic (GLiNER provides entities); a learned relation extractor is roadmap.
 
 ```bash
 # pin a release (recommended for reproducibility)
@@ -203,6 +213,12 @@ this matters for three reasons:
 
 See [brain-alignment.md](docs/architecture/brain-alignment.md) and [bams-benchmark.md](docs/architecture/bams-benchmark.md).
 
+> **Status: design documents only.** No multimodal code exists in this repository yet (no V-JEPA, no Wav2Vec, no BAMS harness). The original ICLR 2026 workshop target is stale and has been dropped from the critical path; the design docs remain as the v2.1 plan.
+
+## benchmarks
+
+Honest numbers or none. The deterministic retrieval benchmark (agidb vs SQLite FTS5 BM25 vs naive scan — hit@k, MRR, latency percentiles, ingest throughput, disk size, noisy-cue and temporal classes) lives in [`bench/RESULTS.md`](bench/RESULTS.md) with raw JSON alongside, and states its limitations (synthetic corpus, lexical-structural only). The constitution's full six-metric stack (adds BLEU, LLM-judge, token cost on LongMemEval-style corpora) is not yet run — claims wait for numbers.
+
 ## documentation
 
 | doc | what's in it |
@@ -225,9 +241,16 @@ See [brain-alignment.md](docs/architecture/brain-alignment.md) and [bams-benchma
 
 ## status
 
-agidb v2.0 is pre-alpha. inherits sochdb v1's working HDC kernel, storage, binding, recall, and consolidation. the AGI pivot adds five new phases (phases 9-13): cognitive primitives, sensory buffer, self-model, unlearn API, and neurosymbolic interface. target benchmark-credible substrate release at month 9.
+agidb v2 is pre-alpha. **Shipped in this repo:** the HDC kernel + bi-temporal storage + tiered recall cascade (A exact → B phi-corrected structured similarity → C gist → D nearest-neighbor) + consolidation + goals/beliefs (state machine + revisable belief log + revision math) + non-destructive unlearn with 30-day restore window + self-model (learning log + self-vector) + floor-1 sensory buffer with surprise-gated promotion + 13-tool MCP server (Claude Desktop / Cursor) + deterministic benchmark harness (agidb vs SQLite FTS5 BM25 vs naive scan — see [`bench/RESULTS.md`](bench/RESULTS.md)).
 
-**agidb v2.1** extends the substrate with multimodal sensory encoding (V-JEPA 2 + Wav2Vec-BERT + GLiNER), brain-calibrated surprise gating, and the BAMS benchmark suite. target month 12 (aug 2026). paper submission to ICLR 2026 MemAgents workshop.
+**Planned (no code yet):** floor-2 working memory, floor-5 procedural retrieval, multimodal encoding (V-JEPA 2 / Wav2Vec-BERT), BAMS brain-alignment benchmark suite, Python bindings, background consolidation scheduler. The ICLR 2026 MemAgents workshop target is dropped from the critical path; v2.1 multimodal and BAMS remain as design docs under `docs/architecture/`.
+
+**Honest numbers from the 10k-ep benchmark:**
+- agidb wins **noisy queries** decisively (0.90 hit@1 vs 0.00 for BM25/scan).
+- agidb ties on **single-entity** queries (1.00 all three).
+- agidb loses **exact** (0.00 vs 1.00 FTS5) and **temporal** (0.02 vs 0.50 FTS5) — structural limitations of HDC token-bundle scoring, captured honestly in `bench/RESULTS.md`.
+
+**Honest number from the 100-row extraction gold set:** F1 = 0.592 (P=0.865, R=0.450). The extractor is conservative; OOV paraphrase misses are correctly labeled as expected misses in the gold set.
 
 ## license
 
