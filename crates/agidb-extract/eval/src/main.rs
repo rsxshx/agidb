@@ -48,6 +48,11 @@ struct Cli {
     /// Useful for schema-validation runs without any cached models.
     #[arg(long)]
     dry_run: bool,
+
+    /// F1 exit gate for CI. The build fails (exit 2) below this when
+    /// not in dry-run. Default is the phase-3 commitment: 0.85.
+    #[arg(long, default_value_t = 0.85)]
+    gate: f64,
 }
 
 #[derive(Deserialize, Debug, Clone)]
@@ -159,8 +164,8 @@ fn main() -> Result<()> {
     // For unattended CI runs we want non-zero exit when the F1 gate
     // isn't met AND we're not in dry-run. (Skip when there's no real
     // extraction — dry-run F1 is always 0 by design.)
-    if !cli.dry_run && f1 < 0.85 {
-        eprintln!("F1 below the phase-3 gate (0.85)");
+    if !cli.dry_run && f1 < cli.gate {
+        eprintln!("F1 {:.3} below the gate ({:.3})", f1, cli.gate);
         std::process::exit(2);
     }
     Ok(())

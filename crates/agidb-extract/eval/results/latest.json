@@ -1,0 +1,1709 @@
+{
+  "precision": 0.8653846153846154,
+  "recall": 0.45,
+  "f1": 0.5921052631578948,
+  "n": 100,
+  "dry_run": false,
+  "per_row": [
+    {
+      "text": "Wei loves Disfrutar",
+      "expected": [
+        {
+          "subject": "Wei",
+          "predicate": "likes",
+          "object": "Disfrutar"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Wei",
+          "predicate": "likes",
+          "object": "Disfrutar"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Miguel works at Zalando",
+      "expected": [
+        {
+          "subject": "Miguel",
+          "predicate": "works_at",
+          "object": "Zalando"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Miguel",
+          "predicate": "works_at",
+          "object": "Zalando"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Lena loves Dakshin",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "likes",
+          "object": "Dakshin"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Lena",
+          "predicate": "likes",
+          "object": "Dakshin"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Julia loves Dakshin a week ago",
+      "expected": [
+        {
+          "subject": "Julia",
+          "predicate": "likes",
+          "object": "Dakshin"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "did you see the news about the new funding round?",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "the wifi is down again",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "will the tokyo offsite be in english?",
+      "expected": [],
+      "extracted": [
+        {
+          "subject": "offsite",
+          "predicate": "located_in",
+          "object": "english"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 0
+    },
+    {
+      "text": "Daria recommended Gajalee",
+      "expected": [
+        {
+          "subject": "Daria",
+          "predicate": "recommends",
+          "object": "Gajalee"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "what time is the standup tomorrow?",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Emil is based in Singapore",
+      "expected": [
+        {
+          "subject": "Emil",
+          "predicate": "located_in",
+          "object": "Singapore"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Emil",
+          "predicate": "located_in",
+          "object": "Singapore"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ivan is based in Amsterdam last month",
+      "expected": [
+        {
+          "subject": "Ivan",
+          "predicate": "located_in",
+          "object": "Amsterdam"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Ivan",
+          "predicate": "located_in",
+          "object": "Amsterdam"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Julia is based in Brooklyn and works for Notion",
+      "expected": [
+        {
+          "subject": "Julia",
+          "predicate": "located_in",
+          "object": "Brooklyn"
+        },
+        {
+          "subject": "Julia",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Julia",
+          "predicate": "located_in",
+          "object": "Brooklyn"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Quinn recommended Trishna and loves Blue Tokai",
+      "expected": [
+        {
+          "subject": "Quinn",
+          "predicate": "recommends",
+          "object": "Trishna"
+        },
+        {
+          "subject": "Quinn",
+          "predicate": "likes",
+          "object": "Disfrutar"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Quinn",
+          "predicate": "recommends",
+          "object": "Trishna"
+        },
+        {
+          "subject": "Trishna",
+          "predicate": "likes",
+          "object": "Blue Tokai"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 1
+    },
+    {
+      "text": "Ravi shouted out Subko",
+      "expected": [
+        {
+          "subject": "Ravi",
+          "predicate": "recommends",
+          "object": "Subko"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Lena loves Disfrutar",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "likes",
+          "object": "Disfrutar"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Lena",
+          "predicate": "likes",
+          "object": "Disfrutar"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ivan recommended Brat",
+      "expected": [
+        {
+          "subject": "Ivan",
+          "predicate": "recommends",
+          "object": "Brat"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Helga spends weekdays at Kissa",
+      "expected": [
+        {
+          "subject": "Helga",
+          "predicate": "works_at",
+          "object": "Kissa"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Arjun loves Attica",
+      "expected": [
+        {
+          "subject": "Arjun",
+          "predicate": "likes",
+          "object": "Attica"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Arjun",
+          "predicate": "likes",
+          "object": "Attica"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Lena is based in Toronto",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "located_in",
+          "object": "Toronto"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Lena",
+          "predicate": "located_in",
+          "object": "Toronto"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Chetan is based in Bandra on Monday",
+      "expected": [
+        {
+          "subject": "Chetan",
+          "predicate": "located_in",
+          "object": "Bandra"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Chetan",
+          "predicate": "located_in",
+          "object": "Bandra"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "can you grab coffee at 10?",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ankit recommended Britannia and loves Brat",
+      "expected": [
+        {
+          "subject": "Ankit",
+          "predicate": "recommends",
+          "object": "Britannia"
+        },
+        {
+          "subject": "Ankit",
+          "predicate": "likes",
+          "object": "Britannia"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Britannia",
+          "predicate": "likes",
+          "object": "Brat"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "text": "Sofia recommended Frantzen",
+      "expected": [
+        {
+          "subject": "Sofia",
+          "predicate": "recommends",
+          "object": "Frantzen"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Zainab is based in New York and works for Zalando",
+      "expected": [
+        {
+          "subject": "Zainab",
+          "predicate": "located_in",
+          "object": "New York"
+        },
+        {
+          "subject": "Zainab",
+          "predicate": "works_at",
+          "object": "Zalando"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Zainab",
+          "predicate": "located_in",
+          "object": "New York"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Bianca is based in Mexico City and works for Notion",
+      "expected": [
+        {
+          "subject": "Bianca",
+          "predicate": "located_in",
+          "object": "Mexico City"
+        },
+        {
+          "subject": "Bianca",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Bianca",
+          "predicate": "located_in",
+          "object": "Mexico City"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Emil recommended Kissa",
+      "expected": [
+        {
+          "subject": "Emil",
+          "predicate": "recommends",
+          "object": "Kissa"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Uma loves Ikoyi",
+      "expected": [
+        {
+          "subject": "Uma",
+          "predicate": "likes",
+          "object": "Ikoyi"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Uma",
+          "predicate": "likes",
+          "object": "Ikoyi"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Bob recommended Noma",
+      "expected": [
+        {
+          "subject": "Bob",
+          "predicate": "recommends",
+          "object": "Noma"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Miguel endorsed Mahesh Lunch Home",
+      "expected": [
+        {
+          "subject": "Miguel",
+          "predicate": "recommends",
+          "object": "Mahesh Lunch Home"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Grace works at Franceschetta",
+      "expected": [
+        {
+          "subject": "Grace",
+          "predicate": "works_at",
+          "object": "Franceschetta"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Grace",
+          "predicate": "works_at",
+          "object": "Franceschetta"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Alice is based in New York",
+      "expected": [
+        {
+          "subject": "Alice",
+          "predicate": "located_in",
+          "object": "New York"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Alice",
+          "predicate": "located_in",
+          "object": "New York"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Bob is obsessed with Septime",
+      "expected": [
+        {
+          "subject": "Bob",
+          "predicate": "recommends",
+          "object": "Septime"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Kenji loves Steirereck a week ago",
+      "expected": [
+        {
+          "subject": "Kenji",
+          "predicate": "likes",
+          "object": "Steirereck"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Dan recommended Britannia",
+      "expected": [
+        {
+          "subject": "Dan",
+          "predicate": "recommends",
+          "object": "Britannia"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "let me think about that and get back to you",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Dev is based in Amsterdam",
+      "expected": [
+        {
+          "subject": "Dev",
+          "predicate": "located_in",
+          "object": "Amsterdam"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Dev",
+          "predicate": "located_in",
+          "object": "Amsterdam"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Alice put on a pedestal Blue Tokai",
+      "expected": [
+        {
+          "subject": "Alice",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Bob recommended Soam recently",
+      "expected": [
+        {
+          "subject": "Bob",
+          "predicate": "recommends",
+          "object": "Soam"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Yuki loves Yauatcha",
+      "expected": [
+        {
+          "subject": "Yuki",
+          "predicate": "likes",
+          "object": "Yauatcha"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Yuki",
+          "predicate": "likes",
+          "object": "Yauatcha"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Fatima loves Hoppers last month",
+      "expected": [
+        {
+          "subject": "Fatima",
+          "predicate": "likes",
+          "object": "Hoppers"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Wei recommended Olive",
+      "expected": [
+        {
+          "subject": "Wei",
+          "predicate": "recommends",
+          "object": "Olive"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Carol is based in Lisbon and works for Stripe",
+      "expected": [
+        {
+          "subject": "Carol",
+          "predicate": "located_in",
+          "object": "Lisbon"
+        },
+        {
+          "subject": "Carol",
+          "predicate": "works_at",
+          "object": "Stripe"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Carol",
+          "predicate": "located_in",
+          "object": "Lisbon"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Marco recommended Soam",
+      "expected": [
+        {
+          "subject": "Marco",
+          "predicate": "recommends",
+          "object": "Soam"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Sarah works at Notion",
+      "expected": [
+        {
+          "subject": "Sarah",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Sarah",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Tarun works at Septime on Monday",
+      "expected": [
+        {
+          "subject": "Tarun",
+          "predicate": "works_at",
+          "object": "Septime"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Tarun",
+          "predicate": "works_at",
+          "object": "Septime"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ximena recommended Disfrutar",
+      "expected": [
+        {
+          "subject": "Ximena",
+          "predicate": "recommends",
+          "object": "Disfrutar"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Marco is based in Berlin",
+      "expected": [
+        {
+          "subject": "Marco",
+          "predicate": "located_in",
+          "object": "Berlin"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Marco",
+          "predicate": "located_in",
+          "object": "Berlin"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Tarun loves Izumi",
+      "expected": [
+        {
+          "subject": "Tarun",
+          "predicate": "likes",
+          "object": "Izumi"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Tarun",
+          "predicate": "likes",
+          "object": "Izumi"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ximena is resident in",
+      "expected": [
+        {
+          "subject": "Ximena",
+          "predicate": "located_in",
+          "object": "Toronto"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "thanks!",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Dan is based in Tokyo last Friday",
+      "expected": [
+        {
+          "subject": "Dan",
+          "predicate": "located_in",
+          "object": "Tokyo"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Dan",
+          "predicate": "located_in",
+          "object": "Tokyo"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Sofia is on payroll at Masque",
+      "expected": [
+        {
+          "subject": "Sofia",
+          "predicate": "works_at",
+          "object": "Masque"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Tarun recommended Soam",
+      "expected": [
+        {
+          "subject": "Tarun",
+          "predicate": "recommends",
+          "object": "Soam"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Hana recommended Britannia and loves Maido",
+      "expected": [
+        {
+          "subject": "Hana",
+          "predicate": "recommends",
+          "object": "Britannia"
+        },
+        {
+          "subject": "Hana",
+          "predicate": "likes",
+          "object": "Noma"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Britannia",
+          "predicate": "likes",
+          "object": "Maido"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "text": "Pilar is based in New York",
+      "expected": [
+        {
+          "subject": "Pilar",
+          "predicate": "located_in",
+          "object": "New York"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Pilar",
+          "predicate": "located_in",
+          "object": "New York"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Pilar loves Pali Bhavan last month",
+      "expected": [
+        {
+          "subject": "Pilar",
+          "predicate": "likes",
+          "object": "Pali Bhavan"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Arjun is wild about Soam",
+      "expected": [
+        {
+          "subject": "Arjun",
+          "predicate": "likes",
+          "object": "Soam"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Dev loves Subko",
+      "expected": [
+        {
+          "subject": "Dev",
+          "predicate": "likes",
+          "object": "Subko"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Dev",
+          "predicate": "likes",
+          "object": "Subko"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Daria recommended Soam on Monday",
+      "expected": [
+        {
+          "subject": "Daria",
+          "predicate": "recommends",
+          "object": "Soam"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Miguel recommended Yauatcha",
+      "expected": [
+        {
+          "subject": "Miguel",
+          "predicate": "recommends",
+          "object": "Yauatcha"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Lena recommended Olive last Friday",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "recommends",
+          "object": "Olive"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Arjun recommended Subko and loves Frantzen",
+      "expected": [
+        {
+          "subject": "Arjun",
+          "predicate": "recommends",
+          "object": "Subko"
+        },
+        {
+          "subject": "Arjun",
+          "predicate": "likes",
+          "object": "Frantzen"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Subko",
+          "predicate": "likes",
+          "object": "Frantzen"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 2
+    },
+    {
+      "text": "Wei is based in San Francisco and works for Notion",
+      "expected": [
+        {
+          "subject": "Wei",
+          "predicate": "located_in",
+          "object": "San Francisco"
+        },
+        {
+          "subject": "Wei",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Wei",
+          "predicate": "located_in",
+          "object": "San Francisco"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Helga is based in Bangkok",
+      "expected": [
+        {
+          "subject": "Helga",
+          "predicate": "located_in",
+          "object": "Bangkok"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Helga",
+          "predicate": "located_in",
+          "object": "Bangkok"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "haha good point",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Uma loves Izumi",
+      "expected": [
+        {
+          "subject": "Uma",
+          "predicate": "likes",
+          "object": "Izumi"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Uma",
+          "predicate": "likes",
+          "object": "Izumi"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Farid works at Odette yesterday",
+      "expected": [
+        {
+          "subject": "Farid",
+          "predicate": "works_at",
+          "object": "Odette"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Farid",
+          "predicate": "works_at",
+          "object": "Odette"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Emil loves Blue Tokai",
+      "expected": [
+        {
+          "subject": "Emil",
+          "predicate": "likes",
+          "object": "Blue Tokai"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Emil",
+          "predicate": "likes",
+          "object": "Blue Tokai"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Wei is wild about Trivet",
+      "expected": [
+        {
+          "subject": "Wei",
+          "predicate": "likes",
+          "object": "Trivet"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Carol recommended Trishna on Tuesday",
+      "expected": [
+        {
+          "subject": "Carol",
+          "predicate": "recommends",
+          "object": "Trishna"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Carol is a huge fan of Yauatcha",
+      "expected": [
+        {
+          "subject": "Carol",
+          "predicate": "likes",
+          "object": "Yauatcha"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Omar moved to",
+      "expected": [
+        {
+          "subject": "Omar",
+          "predicate": "located_in",
+          "object": "Seoul"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Helga recommended Trishna",
+      "expected": [
+        {
+          "subject": "Helga",
+          "predicate": "recommends",
+          "object": "Trishna"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Yuki works at Etxebarri",
+      "expected": [
+        {
+          "subject": "Yuki",
+          "predicate": "works_at",
+          "object": "Etxebarri"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Yuki",
+          "predicate": "works_at",
+          "object": "Etxebarri"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Yuki is obsessed with Ikoyi two days ago",
+      "expected": [
+        {
+          "subject": "Yuki",
+          "predicate": "recommends",
+          "object": "Ikoyi"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Bob works at Stripe",
+      "expected": [
+        {
+          "subject": "Bob",
+          "predicate": "works_at",
+          "object": "Stripe"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Bob",
+          "predicate": "works_at",
+          "object": "Stripe"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Omar works at Stripe a week ago",
+      "expected": [
+        {
+          "subject": "Omar",
+          "predicate": "works_at",
+          "object": "Stripe"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Omar",
+          "predicate": "works_at",
+          "object": "Stripe"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Lena works at Steirereck",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "works_at",
+          "object": "Steirereck"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Lena",
+          "predicate": "works_at",
+          "object": "Steirereck"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Emil recommended Gymkhana on Monday",
+      "expected": [
+        {
+          "subject": "Emil",
+          "predicate": "recommends",
+          "object": "Gymkhana"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Farid loves Diverxo last month",
+      "expected": [
+        {
+          "subject": "Farid",
+          "predicate": "likes",
+          "object": "Diverxo"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Miguel recommended Bawri",
+      "expected": [
+        {
+          "subject": "Miguel",
+          "predicate": "recommends",
+          "object": "Bawri"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Kenji recommended Blue Tokai",
+      "expected": [
+        {
+          "subject": "Kenji",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Kenji is based in Mumbai last month",
+      "expected": [
+        {
+          "subject": "Kenji",
+          "predicate": "located_in",
+          "object": "Mumbai"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Kenji",
+          "predicate": "located_in",
+          "object": "Mumbai"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ankit recommended Blue Tokai and loves Brat",
+      "expected": [
+        {
+          "subject": "Ankit",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        },
+        {
+          "subject": "Ankit",
+          "predicate": "likes",
+          "object": "Mahesh Lunch Home"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Ankit",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        },
+        {
+          "subject": "Blue Tokai",
+          "predicate": "likes",
+          "object": "Brat"
+        }
+      ],
+      "tp": 1,
+      "fp": 1,
+      "fn": 1
+    },
+    {
+      "text": "Ivan recommended Blue Tokai a week ago",
+      "expected": [
+        {
+          "subject": "Ivan",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Farid recommended Maido this morning",
+      "expected": [
+        {
+          "subject": "Farid",
+          "predicate": "recommends",
+          "object": "Maido"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Fatima is based in Brooklyn",
+      "expected": [
+        {
+          "subject": "Fatima",
+          "predicate": "located_in",
+          "object": "Brooklyn"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Fatima",
+          "predicate": "located_in",
+          "object": "Brooklyn"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Quinn works at Gajalee",
+      "expected": [
+        {
+          "subject": "Quinn",
+          "predicate": "works_at",
+          "object": "Gajalee"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Quinn",
+          "predicate": "works_at",
+          "object": "Gajalee"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Daria recommended Quintonil last month",
+      "expected": [
+        {
+          "subject": "Daria",
+          "predicate": "recommends",
+          "object": "Quintonil"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "btw the meeting room changed to the 4th floor",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Lena works at Franceschetta",
+      "expected": [
+        {
+          "subject": "Lena",
+          "predicate": "works_at",
+          "object": "Franceschetta"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Lena",
+          "predicate": "works_at",
+          "object": "Franceschetta"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Priya loves Hoppers",
+      "expected": [
+        {
+          "subject": "Priya",
+          "predicate": "likes",
+          "object": "Hoppers"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Priya",
+          "predicate": "likes",
+          "object": "Hoppers"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Hana recommended Mahesh Lunch Home",
+      "expected": [
+        {
+          "subject": "Hana",
+          "predicate": "recommends",
+          "object": "Mahesh Lunch Home"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Hana",
+          "predicate": "recommends",
+          "object": "Mahesh"
+        }
+      ],
+      "tp": 0,
+      "fp": 1,
+      "fn": 1
+    },
+    {
+      "text": "Carol works at Notion a week ago",
+      "expected": [
+        {
+          "subject": "Carol",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Carol",
+          "predicate": "works_at",
+          "object": "Notion"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Ravi recommended Trivet",
+      "expected": [
+        {
+          "subject": "Ravi",
+          "predicate": "recommends",
+          "object": "Trivet"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Nadia works at Maido",
+      "expected": [
+        {
+          "subject": "Nadia",
+          "predicate": "works_at",
+          "object": "Maido"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Nadia",
+          "predicate": "works_at",
+          "object": "Maido"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Sofia is based in Lima",
+      "expected": [
+        {
+          "subject": "Sofia",
+          "predicate": "located_in",
+          "object": "Lima"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Sofia",
+          "predicate": "located_in",
+          "object": "Lima"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "going for a walk, brb",
+      "expected": [],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 0
+    },
+    {
+      "text": "Priya recommended Blue Tokai on Tuesday",
+      "expected": [
+        {
+          "subject": "Priya",
+          "predicate": "recommends",
+          "object": "Blue Tokai"
+        }
+      ],
+      "extracted": [],
+      "tp": 0,
+      "fp": 0,
+      "fn": 1
+    },
+    {
+      "text": "Farid loves Odette",
+      "expected": [
+        {
+          "subject": "Farid",
+          "predicate": "likes",
+          "object": "Odette"
+        }
+      ],
+      "extracted": [
+        {
+          "subject": "Farid",
+          "predicate": "likes",
+          "object": "Odette"
+        }
+      ],
+      "tp": 1,
+      "fp": 0,
+      "fn": 0
+    }
+  ]
+}

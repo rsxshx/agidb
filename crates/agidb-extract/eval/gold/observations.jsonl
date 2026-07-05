@@ -1,3 +1,100 @@
-{"text":"Sarah recommended Bawri in Bandra last weekend","triples":[{"subject":"Sarah","predicate":"recommends","object":"Bawri"},{"subject":"Bawri","predicate":"located_in","object":"Bandra"}],"notes":"placeholder — replace with the proper 100-sample gold set per phase-3 plan task 15"}
-{"text":"Bob works at Acme","triples":[{"subject":"Bob","predicate":"works_at","object":"Acme"}],"notes":"placeholder"}
-{"text":"Alice met Sarah","triples":[{"subject":"Alice","predicate":"met","object":"Sarah"}],"notes":"placeholder"}
+{"text": "Wei loves Disfrutar", "triples": [{"subject": "Wei", "predicate": "likes", "object": "Disfrutar"}], "notes": "in-vocab likes "}
+{"text": "Miguel works at Zalando", "triples": [{"subject": "Miguel", "predicate": "works_at", "object": "Zalando"}], "notes": "in-vocab works_at "}
+{"text": "Lena loves Dakshin", "triples": [{"subject": "Lena", "predicate": "likes", "object": "Dakshin"}], "notes": "in-vocab likes "}
+{"text": "Julia loves Dakshin a week ago", "triples": [{"subject": "Julia", "predicate": "likes", "object": "Dakshin"}], "notes": "in-vocab likes +temporal"}
+{"text": "did you see the news about the new funding round?", "triples": [], "notes": "zero-triple question"}
+{"text": "the wifi is down again", "triples": [], "notes": "zero-triple exclamation"}
+{"text": "will the tokyo offsite be in english?", "triples": [], "notes": "zero-triple question"}
+{"text": "Daria recommended Gajalee", "triples": [{"subject": "Daria", "predicate": "recommends", "object": "Gajalee"}], "notes": "in-vocab recommends "}
+{"text": "what time is the standup tomorrow?", "triples": [], "notes": "zero-triple question"}
+{"text": "Emil is based in Singapore", "triples": [{"subject": "Emil", "predicate": "located_in", "object": "Singapore"}], "notes": "in-vocab located_in "}
+{"text": "Ivan is based in Amsterdam last month", "triples": [{"subject": "Ivan", "predicate": "located_in", "object": "Amsterdam"}], "notes": "in-vocab located_in +temporal"}
+{"text": "Julia is based in Brooklyn and works for Notion", "triples": [{"subject": "Julia", "predicate": "located_in", "object": "Brooklyn"}, {"subject": "Julia", "predicate": "works_at", "object": "Notion"}], "notes": "two triples one sentence \u2014 located_in + works_at"}
+{"text": "Quinn recommended Trishna and loves Blue Tokai", "triples": [{"subject": "Quinn", "predicate": "recommends", "object": "Trishna"}, {"subject": "Quinn", "predicate": "likes", "object": "Disfrutar"}], "notes": "two triples one sentence \u2014 recommends + likes"}
+{"text": "Ravi shouted out Subko", "triples": [{"subject": "Ravi", "predicate": "recommends", "object": "Subko"}], "notes": "OOV paraphrase \u2014 expected heuristic miss"}
+{"text": "Lena loves Disfrutar", "triples": [{"subject": "Lena", "predicate": "likes", "object": "Disfrutar"}], "notes": "in-vocab likes "}
+{"text": "Ivan recommended Brat", "triples": [{"subject": "Ivan", "predicate": "recommends", "object": "Brat"}], "notes": "in-vocab recommends "}
+{"text": "Helga spends weekdays at Kissa", "triples": [{"subject": "Helga", "predicate": "works_at", "object": "Kissa"}], "notes": "OOV works_at paraphrase"}
+{"text": "Arjun loves Attica", "triples": [{"subject": "Arjun", "predicate": "likes", "object": "Attica"}], "notes": "in-vocab likes "}
+{"text": "Lena is based in Toronto", "triples": [{"subject": "Lena", "predicate": "located_in", "object": "Toronto"}], "notes": "in-vocab located_in "}
+{"text": "Chetan is based in Bandra on Monday", "triples": [{"subject": "Chetan", "predicate": "located_in", "object": "Bandra"}], "notes": "in-vocab located_in +temporal"}
+{"text": "can you grab coffee at 10?", "triples": [], "notes": "zero-triple request"}
+{"text": "Ankit recommended Britannia and loves Brat", "triples": [{"subject": "Ankit", "predicate": "recommends", "object": "Britannia"}, {"subject": "Ankit", "predicate": "likes", "object": "Britannia"}], "notes": "two triples one sentence \u2014 recommends + likes"}
+{"text": "Sofia recommended Frantzen", "triples": [{"subject": "Sofia", "predicate": "recommends", "object": "Frantzen"}], "notes": "in-vocab recommends "}
+{"text": "Zainab is based in New York and works for Zalando", "triples": [{"subject": "Zainab", "predicate": "located_in", "object": "New York"}, {"subject": "Zainab", "predicate": "works_at", "object": "Zalando"}], "notes": "two triples one sentence \u2014 located_in + works_at"}
+{"text": "Bianca is based in Mexico City and works for Notion", "triples": [{"subject": "Bianca", "predicate": "located_in", "object": "Mexico City"}, {"subject": "Bianca", "predicate": "works_at", "object": "Notion"}], "notes": "two triples one sentence \u2014 located_in + works_at"}
+{"text": "Emil recommended Kissa", "triples": [{"subject": "Emil", "predicate": "recommends", "object": "Kissa"}], "notes": "in-vocab recommends "}
+{"text": "Uma loves Ikoyi", "triples": [{"subject": "Uma", "predicate": "likes", "object": "Ikoyi"}], "notes": "in-vocab likes "}
+{"text": "Bob recommended Noma", "triples": [{"subject": "Bob", "predicate": "recommends", "object": "Noma"}], "notes": "in-vocab recommends "}
+{"text": "Miguel endorsed Mahesh Lunch Home", "triples": [{"subject": "Miguel", "predicate": "recommends", "object": "Mahesh Lunch Home"}], "notes": "OOV paraphrase \u2014 expected heuristic miss"}
+{"text": "Grace works at Franceschetta", "triples": [{"subject": "Grace", "predicate": "works_at", "object": "Franceschetta"}], "notes": "in-vocab works_at "}
+{"text": "Alice is based in New York", "triples": [{"subject": "Alice", "predicate": "located_in", "object": "New York"}], "notes": "in-vocab located_in "}
+{"text": "Bob is obsessed with Septime", "triples": [{"subject": "Bob", "predicate": "recommends", "object": "Septime"}], "notes": "OOV paraphrase \u2014 expected heuristic miss"}
+{"text": "Kenji loves Steirereck a week ago", "triples": [{"subject": "Kenji", "predicate": "likes", "object": "Steirereck"}], "notes": "in-vocab likes +temporal"}
+{"text": "Dan recommended Britannia", "triples": [{"subject": "Dan", "predicate": "recommends", "object": "Britannia"}], "notes": "in-vocab recommends "}
+{"text": "let me think about that and get back to you", "triples": [], "notes": "zero-triple social"}
+{"text": "Dev is based in Amsterdam", "triples": [{"subject": "Dev", "predicate": "located_in", "object": "Amsterdam"}], "notes": "in-vocab located_in "}
+{"text": "Alice put on a pedestal Blue Tokai", "triples": [{"subject": "Alice", "predicate": "recommends", "object": "Blue Tokai"}], "notes": "OOV paraphrase \u2014 expected heuristic miss"}
+{"text": "Bob recommended Soam recently", "triples": [{"subject": "Bob", "predicate": "recommends", "object": "Soam"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Yuki loves Yauatcha", "triples": [{"subject": "Yuki", "predicate": "likes", "object": "Yauatcha"}], "notes": "in-vocab likes "}
+{"text": "Fatima loves Hoppers last month", "triples": [{"subject": "Fatima", "predicate": "likes", "object": "Hoppers"}], "notes": "in-vocab likes +temporal"}
+{"text": "Wei recommended Olive", "triples": [{"subject": "Wei", "predicate": "recommends", "object": "Olive"}], "notes": "in-vocab recommends "}
+{"text": "Carol is based in Lisbon and works for Stripe", "triples": [{"subject": "Carol", "predicate": "located_in", "object": "Lisbon"}, {"subject": "Carol", "predicate": "works_at", "object": "Stripe"}], "notes": "two triples one sentence \u2014 located_in + works_at"}
+{"text": "Marco recommended Soam", "triples": [{"subject": "Marco", "predicate": "recommends", "object": "Soam"}], "notes": "in-vocab recommends "}
+{"text": "Sarah works at Notion", "triples": [{"subject": "Sarah", "predicate": "works_at", "object": "Notion"}], "notes": "in-vocab works_at "}
+{"text": "Tarun works at Septime on Monday", "triples": [{"subject": "Tarun", "predicate": "works_at", "object": "Septime"}], "notes": "in-vocab works_at +temporal"}
+{"text": "Ximena recommended Disfrutar", "triples": [{"subject": "Ximena", "predicate": "recommends", "object": "Disfrutar"}], "notes": "in-vocab recommends "}
+{"text": "Marco is based in Berlin", "triples": [{"subject": "Marco", "predicate": "located_in", "object": "Berlin"}], "notes": "in-vocab located_in "}
+{"text": "Tarun loves Izumi", "triples": [{"subject": "Tarun", "predicate": "likes", "object": "Izumi"}], "notes": "in-vocab likes "}
+{"text": "Ximena is resident in", "triples": [{"subject": "Ximena", "predicate": "located_in", "object": "Toronto"}], "notes": "OOV located_in paraphrase"}
+{"text": "thanks!", "triples": [], "notes": "zero-triple social"}
+{"text": "Dan is based in Tokyo last Friday", "triples": [{"subject": "Dan", "predicate": "located_in", "object": "Tokyo"}], "notes": "in-vocab located_in +temporal"}
+{"text": "Sofia is on payroll at Masque", "triples": [{"subject": "Sofia", "predicate": "works_at", "object": "Masque"}], "notes": "OOV works_at paraphrase"}
+{"text": "Tarun recommended Soam", "triples": [{"subject": "Tarun", "predicate": "recommends", "object": "Soam"}], "notes": "in-vocab recommends "}
+{"text": "Hana recommended Britannia and loves Maido", "triples": [{"subject": "Hana", "predicate": "recommends", "object": "Britannia"}, {"subject": "Hana", "predicate": "likes", "object": "Noma"}], "notes": "two triples one sentence \u2014 recommends + likes"}
+{"text": "Pilar is based in New York", "triples": [{"subject": "Pilar", "predicate": "located_in", "object": "New York"}], "notes": "in-vocab located_in "}
+{"text": "Pilar loves Pali Bhavan last month", "triples": [{"subject": "Pilar", "predicate": "likes", "object": "Pali Bhavan"}], "notes": "in-vocab likes +temporal"}
+{"text": "Arjun is wild about Soam", "triples": [{"subject": "Arjun", "predicate": "likes", "object": "Soam"}], "notes": "OOV likes paraphrase"}
+{"text": "Dev loves Subko", "triples": [{"subject": "Dev", "predicate": "likes", "object": "Subko"}], "notes": "in-vocab likes "}
+{"text": "Daria recommended Soam on Monday", "triples": [{"subject": "Daria", "predicate": "recommends", "object": "Soam"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Miguel recommended Yauatcha", "triples": [{"subject": "Miguel", "predicate": "recommends", "object": "Yauatcha"}], "notes": "in-vocab recommends "}
+{"text": "Lena recommended Olive last Friday", "triples": [{"subject": "Lena", "predicate": "recommends", "object": "Olive"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Arjun recommended Subko and loves Frantzen", "triples": [{"subject": "Arjun", "predicate": "recommends", "object": "Subko"}, {"subject": "Arjun", "predicate": "likes", "object": "Frantzen"}], "notes": "two triples one sentence \u2014 recommends + likes"}
+{"text": "Wei is based in San Francisco and works for Notion", "triples": [{"subject": "Wei", "predicate": "located_in", "object": "San Francisco"}, {"subject": "Wei", "predicate": "works_at", "object": "Notion"}], "notes": "two triples one sentence \u2014 located_in + works_at"}
+{"text": "Helga is based in Bangkok", "triples": [{"subject": "Helga", "predicate": "located_in", "object": "Bangkok"}], "notes": "in-vocab located_in "}
+{"text": "haha good point", "triples": [], "notes": "zero-triple social"}
+{"text": "Uma loves Izumi", "triples": [{"subject": "Uma", "predicate": "likes", "object": "Izumi"}], "notes": "in-vocab likes "}
+{"text": "Farid works at Odette yesterday", "triples": [{"subject": "Farid", "predicate": "works_at", "object": "Odette"}], "notes": "in-vocab works_at +temporal"}
+{"text": "Emil loves Blue Tokai", "triples": [{"subject": "Emil", "predicate": "likes", "object": "Blue Tokai"}], "notes": "in-vocab likes "}
+{"text": "Wei is wild about Trivet", "triples": [{"subject": "Wei", "predicate": "likes", "object": "Trivet"}], "notes": "OOV likes paraphrase"}
+{"text": "Carol recommended Trishna on Tuesday", "triples": [{"subject": "Carol", "predicate": "recommends", "object": "Trishna"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Carol is a huge fan of Yauatcha", "triples": [{"subject": "Carol", "predicate": "likes", "object": "Yauatcha"}], "notes": "OOV likes paraphrase"}
+{"text": "Omar moved to", "triples": [{"subject": "Omar", "predicate": "located_in", "object": "Seoul"}], "notes": "OOV located_in paraphrase"}
+{"text": "Helga recommended Trishna", "triples": [{"subject": "Helga", "predicate": "recommends", "object": "Trishna"}], "notes": "in-vocab recommends "}
+{"text": "Yuki works at Etxebarri", "triples": [{"subject": "Yuki", "predicate": "works_at", "object": "Etxebarri"}], "notes": "in-vocab works_at "}
+{"text": "Yuki is obsessed with Ikoyi two days ago", "triples": [{"subject": "Yuki", "predicate": "recommends", "object": "Ikoyi"}], "notes": "OOV paraphrase \u2014 expected heuristic miss"}
+{"text": "Bob works at Stripe", "triples": [{"subject": "Bob", "predicate": "works_at", "object": "Stripe"}], "notes": "in-vocab works_at "}
+{"text": "Omar works at Stripe a week ago", "triples": [{"subject": "Omar", "predicate": "works_at", "object": "Stripe"}], "notes": "in-vocab works_at +temporal"}
+{"text": "Lena works at Steirereck", "triples": [{"subject": "Lena", "predicate": "works_at", "object": "Steirereck"}], "notes": "in-vocab works_at "}
+{"text": "Emil recommended Gymkhana on Monday", "triples": [{"subject": "Emil", "predicate": "recommends", "object": "Gymkhana"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Farid loves Diverxo last month", "triples": [{"subject": "Farid", "predicate": "likes", "object": "Diverxo"}], "notes": "in-vocab likes +temporal"}
+{"text": "Miguel recommended Bawri", "triples": [{"subject": "Miguel", "predicate": "recommends", "object": "Bawri"}], "notes": "in-vocab recommends "}
+{"text": "Kenji recommended Blue Tokai", "triples": [{"subject": "Kenji", "predicate": "recommends", "object": "Blue Tokai"}], "notes": "in-vocab recommends "}
+{"text": "Kenji is based in Mumbai last month", "triples": [{"subject": "Kenji", "predicate": "located_in", "object": "Mumbai"}], "notes": "in-vocab located_in +temporal"}
+{"text": "Ankit recommended Blue Tokai and loves Brat", "triples": [{"subject": "Ankit", "predicate": "recommends", "object": "Blue Tokai"}, {"subject": "Ankit", "predicate": "likes", "object": "Mahesh Lunch Home"}], "notes": "two triples one sentence \u2014 recommends + likes"}
+{"text": "Ivan recommended Blue Tokai a week ago", "triples": [{"subject": "Ivan", "predicate": "recommends", "object": "Blue Tokai"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Farid recommended Maido this morning", "triples": [{"subject": "Farid", "predicate": "recommends", "object": "Maido"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Fatima is based in Brooklyn", "triples": [{"subject": "Fatima", "predicate": "located_in", "object": "Brooklyn"}], "notes": "in-vocab located_in "}
+{"text": "Quinn works at Gajalee", "triples": [{"subject": "Quinn", "predicate": "works_at", "object": "Gajalee"}], "notes": "in-vocab works_at "}
+{"text": "Daria recommended Quintonil last month", "triples": [{"subject": "Daria", "predicate": "recommends", "object": "Quintonil"}], "notes": "in-vocab recommends +temporal"}
+{"text": "btw the meeting room changed to the 4th floor", "triples": [], "notes": "zero-triple statement"}
+{"text": "Lena works at Franceschetta", "triples": [{"subject": "Lena", "predicate": "works_at", "object": "Franceschetta"}], "notes": "in-vocab works_at "}
+{"text": "Priya loves Hoppers", "triples": [{"subject": "Priya", "predicate": "likes", "object": "Hoppers"}], "notes": "in-vocab likes "}
+{"text": "Hana recommended Mahesh Lunch Home", "triples": [{"subject": "Hana", "predicate": "recommends", "object": "Mahesh Lunch Home"}], "notes": "in-vocab recommends "}
+{"text": "Carol works at Notion a week ago", "triples": [{"subject": "Carol", "predicate": "works_at", "object": "Notion"}], "notes": "in-vocab works_at +temporal"}
+{"text": "Ravi recommended Trivet", "triples": [{"subject": "Ravi", "predicate": "recommends", "object": "Trivet"}], "notes": "in-vocab recommends "}
+{"text": "Nadia works at Maido", "triples": [{"subject": "Nadia", "predicate": "works_at", "object": "Maido"}], "notes": "in-vocab works_at "}
+{"text": "Sofia is based in Lima", "triples": [{"subject": "Sofia", "predicate": "located_in", "object": "Lima"}], "notes": "in-vocab located_in "}
+{"text": "going for a walk, brb", "triples": [], "notes": "zero-triple social"}
+{"text": "Priya recommended Blue Tokai on Tuesday", "triples": [{"subject": "Priya", "predicate": "recommends", "object": "Blue Tokai"}], "notes": "in-vocab recommends +temporal"}
+{"text": "Farid loves Odette", "triples": [{"subject": "Farid", "predicate": "likes", "object": "Odette"}], "notes": "in-vocab likes "}
