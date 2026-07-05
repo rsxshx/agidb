@@ -1,6 +1,6 @@
 [package]
 name = "agidb-bench"
-description = "Benchmark harness for agidb. Runs LongMemEval-S, LoCoMo, and BEAM against agidb, Mem0, Zep/Graphiti, and Letta with the full six-metric stack."
+description = "Deterministic retrieval benchmark: agidb vs SQLite FTS5 (BM25) vs naive scan — hit@k, MRR, latency percentiles, ingest throughput, disk size."
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,15 +11,14 @@ authors.workspace = true
 publish = false
 
 [[bin]]
-name = "bench-all"
+name = "agidb-bench"
 path = "src/main.rs"
 
 [dependencies]
 agidb-core = { workspace = true }
-agidb-extract = { workspace = true }
 anyhow = { workspace = true }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+chrono = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
