@@ -120,9 +120,7 @@ fn tier_e_finds_paraphrase_without_structured_token_overlap() {
 
     {
         let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
-        store.embedder = Some(std::sync::Arc::new(
-            agidb_core::semantic::default_embedder(),
-        ));
+        store.embedder = Some(std::sync::Arc::new(agidb_core::semantic::default_embedder()));
         // Decoy that shares only the noun ("restaurant") with the cue
         // so gist/tier-C would already hit. Tier E is what proves the
         // paraphrase-only retrieval.
@@ -136,13 +134,15 @@ fn tier_e_finds_paraphrase_without_structured_token_overlap() {
             .unwrap();
         let ep = make_episode(1, "Sarah", "recommends", "Bawri");
         store
-            .observe_with_embedder(ep, &signature, Some(&agidb_core::semantic::default_embedder()))
+            .observe_with_embedder(
+                ep,
+                &signature,
+                Some(&agidb_core::semantic::default_embedder()),
+            )
             .unwrap();
     }
-let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
-    store.embedder = Some(std::sync::Arc::new(
-        agidb_core::semantic::default_embedder(),
-    ));
+    let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
+    store.embedder = Some(std::sync::Arc::new(agidb_core::semantic::default_embedder()));
     let r = store
         .recall(&Query::cue("good thai place suggestion"))
         .unwrap();

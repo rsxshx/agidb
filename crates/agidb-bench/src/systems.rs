@@ -2,6 +2,7 @@
 //! answers each query with a ranked id list (top 10).
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Instant;
 
 use agidb_core::episode::encode_episode_signature;
@@ -26,13 +27,24 @@ pub trait System {
 pub struct AgidbSystem {
     store: Store,
     root: std::path::PathBuf,
+    /// Static-text embedder (Charikar projection). Stored on the
+    /// `Store` after observe so tier E fires during recall; the bench
+    /// measures agidb-with-tier-E here vs FTS5 / naive-scan, which
+    /// don't have a semantic-tier equivalent.
+    embedder: Arc<dyn agidb_core::semantic::Embedder>,
 }
 
 impl AgidbSystem {
     pub fn open(root: &Path) -> Result<Self> {
+        let embedder: Arc<dyn agidb_core::semantic::Embedder> =
+            Arc::new(agidb_core::semantic::default_embedder());
+        let mut store = Store::open(StoreConfig::at(root))?;
+        // Tier E requires the embedder to be loaded on the Store.
+        store.embedder = Some(embedder.clone());
         Ok(Self {
-            store: Store::open(StoreConfig::at(root))?,
+            store,
             root: root.to_path_buf(),
+            embedder,
         })
     }
 }
@@ -69,7 +81,8 @@ impl System for AgidbSystem {
                 confidence: 0.9,
                 superseded_by: None,
             };
-            self.store.observe(ep, &sig)?;
+            self.store
+                .observe_with_embedder(ep, &sig, Some(&*self.embedder))?;
         }
         for d in docs {
             if let Some(newer) = d.superseded_by {

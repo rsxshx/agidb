@@ -150,10 +150,7 @@ pub struct ProjectionEmbedder {
 const CHARIKAR_SEED: u64 = 0xC417_4E5C_4152_4B41; // "CHARIKA" in ASCII
 
 impl ProjectionEmbedder {
-    pub fn new(
-        embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync>,
-        embedder_dim: usize,
-    ) -> Self {
+    pub fn new(embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync>, embedder_dim: usize) -> Self {
         assert!(embedder_dim <= 256, "projection rows are [i8; 256]");
         let mut rng = StdRng::seed_from_u64(CHARIKAR_SEED);
         let mut projection: Vec<[i8; 256]> = Vec::with_capacity(crate::hdc::D);

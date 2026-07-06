@@ -101,7 +101,44 @@ pub enum QueryClass {
     SingleEntity,
     Noisy,
     Temporal,
+    /// Paraphrase of an exact-class cue — same relevant set, cue has
+    /// zero token overlap with the stored sentences. Tests the
+    /// semantic-tier fallback (Charikar-projected static-text
+    /// embedding); FTS5 / naive-scan have no equivalent.
+    Paraphrase,
 }
+
+/// Paraphrase templates keyed on the canonical predicate. Each
+/// template is a semantic restatement of a stored factual sentence
+/// ("{person} {recommended} {place}") that shares no token overlap
+/// with the source. Designed for a static-text embedder.
+const PARAPHRASE_TEMPLATES: &[(&str, &[&str])] = &[
+    (
+        "recommends",
+        &[
+            "good {p} place suggestion",
+            "any recommendation for {p}",
+            "where should we go for {p}",
+            "what are some {p} suggestions",
+        ],
+    ),
+    (
+        "likes",
+        &[
+            "things {p} is into",
+            "any {p} favorites",
+            "what does {p} enjoy",
+        ],
+    ),
+    (
+        "works_at",
+        &["where does {p} work", "{p}'s employer", "who employs {p}"],
+    ),
+    (
+        "located_in",
+        &["where is {p} based", "{p}'s home city", "{p}'s location"],
+    ),
+];
 
 #[derive(Clone, Debug)]
 pub struct BenchQuery {
@@ -226,6 +263,33 @@ pub fn build_queries(docs: &[Doc], per_class: usize, rng: &mut Rng) -> Vec<Bench
             cue: format!("what did {} think of {}", old.person, old.place),
             as_of: Some(old.valid_start + Duration::days(1)),
             relevant: vec![old.id],
+        });
+    }
+    // Paraphrase: same relevant set as Exact, but the cue is a
+    // paraphrase drawn from a templated list keyed on the canonical
+    // predicate. The paraphrase has zero token overlap with the
+    // stored sentences; only a semantic-tier system recovers them.
+    let exact_relevant = |person: &str, place: &str| -> Vec<u64> {
+        docs.iter()
+            .filter(|d| d.person == person && d.place == place)
+            .map(|d| d.id)
+            .collect()
+    };
+    let mut par_rng = Rng::new(rng.next()); // deterministic sub-seed
+    for _ in 0..per_class {
+        let d = *rng.pick(&plain);
+        let templates = PARAPHRASE_TEMPLATES
+            .iter()
+            .find(|(p, _)| *p == d.predicate)
+            .map(|(_, t)| *t)
+            .unwrap_or(&["what about {p}'s take on {q}"]);
+        let template = par_rng.pick(templates);
+        let cue = template.replace("{p}", &d.place).replace("{q}", &d.person);
+        queries.push(BenchQuery {
+            class: QueryClass::Paraphrase,
+            cue,
+            as_of: None,
+            relevant: exact_relevant(&d.person, &d.place),
         });
     }
     queries

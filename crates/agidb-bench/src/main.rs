@@ -23,8 +23,8 @@ use systems::{time, AgidbSystem, Fts5System, ScanSystem, System};
 struct Cli {
     #[arg(long, default_value_t = 10_000)]
     episodes: usize,
-    /// Total queries (split equally across 4 classes).
-    #[arg(long, default_value_t = 200)]
+    /// Total queries (split equally across 5 classes).
+    #[arg(long, default_value_t = 250)]
     queries: usize,
     #[arg(long, default_value_t = 42)]
     seed: u64,
@@ -102,6 +102,7 @@ fn run(
         single_entity: by_class(corpus::QueryClass::SingleEntity),
         noisy: by_class(corpus::QueryClass::Noisy),
         temporal: by_class(corpus::QueryClass::Temporal),
+        paraphrase: by_class(corpus::QueryClass::Paraphrase),
     })
 }
 
@@ -126,6 +127,7 @@ fn print_markdown(reports: &[SystemReport]) {
         ("single-entity", 1),
         ("noisy", 2),
         ("temporal", 3),
+        ("paraphrase", 4),
     ] {
         println!("\n### {label}");
         println!("| system | hit@1 | hit@5 | MRR | p95 ms |");
@@ -135,7 +137,8 @@ fn print_markdown(reports: &[SystemReport]) {
                 0 => &r.exact,
                 1 => &r.single_entity,
                 2 => &r.noisy,
-                _ => &r.temporal,
+                3 => &r.temporal,
+                _ => &r.paraphrase,
             };
             println!(
                 "| {} | {:.3} | {:.3} | {:.3} | {:.2} |",

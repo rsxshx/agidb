@@ -26,6 +26,7 @@ pub struct SystemReport {
     pub single_entity: ClassMetrics,
     pub noisy: ClassMetrics,
     pub temporal: ClassMetrics,
+    pub paraphrase: ClassMetrics,
 }
 
 pub struct Sample {
