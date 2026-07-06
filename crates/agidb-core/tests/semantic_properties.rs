@@ -2,7 +2,7 @@
 
 use agidb_core::semantic::{cosine, Embedder};
 use agidb_core::store::{Store, StoreConfig};
-use agidb_core::types::{Episode, EpisodeId, Provenance, TimeRange, Triple};
+use agidb_core::types::{Episode, EpisodeId, Provenance, Query, TimeRange, Triple};
 use chrono::{TimeZone, Utc};
 use tempfile::TempDir;
 
@@ -23,7 +23,6 @@ fn deterministic_and_seeded() {
     assert_eq!(a, b, "same input must produce same vector");
 
     let c = emb.embed("thai food tonight");
-    // Cosine must be positive but not 1.0 — paraphrase ≠ duplicate.
     let cos = cosine(&a, &c);
     assert!(cos > 0.1 && cos < 0.99, "paraphrase cosine = {cos}");
 }
@@ -64,11 +63,7 @@ fn projection_is_deterministic_across_instances() {
     let e1 = agidb_core::semantic::default_embedder();
     let e2 = agidb_core::semantic::default_embedder();
     let v = vec![0.1; e1.dim()];
-    assert_eq!(
-        e1.project(&v),
-        e2.project(&v),
-        "projection must be seeded — same seed, same matrix"
-    );
+    assert_eq!(e1.project(&v), e2.project(&v));
 }
 
 fn make_episode(id: u64, subject: &str, predicate: &str, object: &str) -> Episode {
@@ -95,27 +90,72 @@ fn make_episode(id: u64, subject: &str, predicate: &str, object: &str) -> Episod
 }
 
 #[test]
-fn episode_with_embedder_persists_three_hvs() {
+fn episode_with_embedder_persists_at_least_structured_and_gist() {
+    let dir = TempDir::new().unwrap();
+    let sig_bytes: [u8; 1024] = std::array::from_fn(|i| ((i * 13) % 256) as u8);
+    let signature = agidb_core::hdc::HV(sig_bytes);
+    let embedder = agidb_core::semantic::default_embedder();
+
+    {
+        let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
+        let ep = make_episode(1, "Sarah", "recommends", "Bawri");
+        store
+            .observe_with_embedder(ep, &signature, Some(&embedder))
+            .unwrap();
+    }
+    let store2 = Store::open(StoreConfig::at(dir.path())).unwrap();
+    let stats = store2.stats().unwrap();
+    assert!(
+        stats.signatures >= 2,
+        "expected >= 2 signatures (structured + one of {{gist,embedding}}); got {}",
+        stats.signatures
+    );
+}
+
+#[test]
+fn tier_e_finds_paraphrase_without_structured_token_overlap() {
     let dir = TempDir::new().unwrap();
     let sig_bytes: [u8; 1024] = std::array::from_fn(|i| ((i * 13) % 256) as u8);
     let signature = agidb_core::hdc::HV(sig_bytes);
 
     {
         let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
+        store.embedder = Some(std::sync::Arc::new(
+            agidb_core::semantic::default_embedder(),
+        ));
+        // Decoy that shares only the noun ("restaurant") with the cue
+        // so gist/tier-C would already hit. Tier E is what proves the
+        // paraphrase-only retrieval.
+        let decoy = make_episode(2, "Alice", "dislikes", "restaurant");
+        store
+            .observe_with_embedder(
+                decoy,
+                &signature,
+                Some(&agidb_core::semantic::default_embedder()),
+            )
+            .unwrap();
         let ep = make_episode(1, "Sarah", "recommends", "Bawri");
         store
             .observe_with_embedder(ep, &signature, Some(&agidb_core::semantic::default_embedder()))
             .unwrap();
     }
-    let store2 = Store::open(StoreConfig::at(dir.path())).unwrap();
-    let stats = store2.stats().unwrap();
-    // 3 HVs per episode in the embedder path: structured + gist +
-    // semantic projection. (Dedupe may shrink this to 2 if any
-    // happen to coincide; in practice they almost never do for
-    // random signal vs. random signal.)
-    assert!(
-        stats.signatures >= 2,
-        "expected >= 2 signatures (structured + one of {{gist,embedding}}); got {}",
-        stats.signatures
+let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
+    store.embedder = Some(std::sync::Arc::new(
+        agidb_core::semantic::default_embedder(),
+    ));
+    let r = store
+        .recall(&Query::cue("good thai place suggestion"))
+        .unwrap();
+    assert_eq!(
+        r.tier_used,
+        agidb_core::types::Tier::Semantic,
+        "tier E must fire — got {:?}",
+        r.tier_used
     );
+    let bawri_first = r
+        .matches
+        .first()
+        .map(|m| m.text.contains("Bawri"))
+        .unwrap_or(false);
+    assert!(bawri_first, "Bawri episode must rank first");
 }

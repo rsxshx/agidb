@@ -469,8 +469,10 @@ impl Belief {
 pub enum Tier {
     /// Canonical entity match via the concept index.
     Exact,
-    /// HDC signature similarity (POPCOUNT-driven).
+    /// Role-bound structured HDC signature (phi-corrected).
     Similarity,
+    /// Charikar-projected static-text embedding — paraphrase fallback.
+    Semantic,
     /// Raw-text gist fallback.
     Gist,
     /// Best-effort nearest neighbor with `low_confidence` flag.
@@ -485,8 +487,9 @@ impl Tier {
         match self {
             Tier::Exact => 0,
             Tier::Similarity => 1,
-            Tier::Gist => 2,
-            Tier::NearestNeighbor => 3,
+            Tier::Semantic => 2,
+            Tier::Gist => 3,
+            Tier::NearestNeighbor => 4,
         }
     }
 }

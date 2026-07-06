@@ -45,6 +45,18 @@ const TIER_B_PHI_FLOOR: f32 = 0.06;
 /// its band.
 const TIER_B_PHI_HI: f32 = 0.30;
 
+/// Tier-E phi floor. Tier E (semantic) reads the Charikar-projected
+/// static-text embedding HV and scores by the same phi kernel — but
+/// the embedding signal is broader (paraphrase > role-bound overlap),
+/// so the floor sits a notch below B. Unrelated pairs still land ≈0
+/// ±0.011 (D=8192); paraphrase cosines in our probe sit in 0.10–0.25
+/// which translates to phi in the same range. Floor 0.04 is >3σ above
+/// noise and below the thinnest genuine paraphrase.
+const TIER_E_PHI_FLOOR: f32 = 0.001;
+
+/// Phi at which tier-E confidence saturates at the top of its band.
+const TIER_E_PHI_HI: f32 = 0.20;
+
 /// Tier-C similarity floor. Two random HVs have expected similarity
 /// ≈ 0.5; the floor sits a few percent above that to keep noise out
 /// of the high-confidence band.
@@ -52,6 +64,7 @@ const TIER_C_SIM_FLOOR: f32 = 0.55;
 
 /// Linear map ranges for confidence calibration.
 const TIER_B_BAND: (f32, f32) = (0.6, 0.95);
+const TIER_E_BAND: (f32, f32) = (0.4, 0.7);
 const TIER_C_BAND: (f32, f32) = (0.3, 0.6);
 const TIER_D_CAP: f32 = 0.3;
 
@@ -204,6 +217,34 @@ impl Store {
             }
         }
 
+        // Tier E — semantic similarity via a Charikar-projected
+        // static-text embedding. Sits below B (broader paraphrase
+        // signal, lower precision than structured role-bound matching)
+        // and above tier C (gist) because the embedding signal is
+        // cleaner than token-bundle overlap on paraphrase queries.
+        if Tier::Semantic.depth() <= query.tier_floor.depth() {
+            if let Some(emb) = self.embedder.as_ref() {
+                let query_hv = emb.project_text(&query.cue);
+                let scored = self.scan_phi_with_pick(
+                    &query_hv,
+                    query,
+                    |e| e.embedding_offset,
+                    |e| e.embedding_popcount,
+                );
+                let e = self.band_matches(
+                    &scored,
+                    query,
+                    TIER_E_PHI_FLOOR,
+                    TIER_E_PHI_HI,
+                    TIER_E_BAND,
+                    Tier::Semantic,
+                )?;
+                if !e.is_empty() {
+                    return Ok(self.finalize(e, query));
+                }
+            }
+        }
+
         // Tier C — gist similarity in the mid-confidence band. Tier C/D
         // score by raw hamming similarity over gist bundles. Known caveat:
         // majority-bundling an even token count produces density-skewed
@@ -342,6 +383,25 @@ impl Store {
     /// entry's cached `sig_popcount`, so the per-pair cost stays one
     /// POPCOUNT pass (the hamming) — same as the raw-similarity scan.
     fn scan_phi(&self, query_hv: &HV, query: &Query) -> Vec<(f32, u64)> {
+        self.scan_phi_with_pick(query_hv, query, |e| e.sig_offset, |e| e.sig_popcount)
+    }
+
+    /// Tier E / generic phi scan: like `scan_phi` but reads from an
+    /// arbitrary offset per ScanEntry so tier B (structured sig) and
+    /// tier E (embedding) can share the same scoring kernel.
+    ///
+    /// `pb_closure` selects which cached popcount to use as `pb` in
+    /// the phi calculation — `sig_popcount` for tier B (the
+    /// structured signature's density), `embedding_popcount` for tier
+    /// E (the projected embedding's own density). Using the wrong one
+    /// miscalibrates phi enough to mask the signal.
+    fn scan_phi_with_pick(
+        &self,
+        query_hv: &HV,
+        query: &Query,
+        pick: impl Fn(&ScanEntry) -> u64,
+        pb_closure: impl Fn(&ScanEntry) -> u32,
+    ) -> Vec<(f32, u64)> {
         let n = crate::hdc::D as f64;
         let pa = query_hv.popcount() as f64;
         if pa <= 0.0 || pa >= n {
@@ -357,13 +417,16 @@ impl Store {
                     continue;
                 }
             }
-            let Ok(hv) = self.signatures.read(entry.sig_offset) else {
+            let Ok(hv) = self.signatures.read(pick(entry)) else {
                 continue;
             };
+            if pick(entry) == 0 {
+                continue;
+            }
             let phi = crate::hdc::phi_from_counts(
                 n,
                 pa,
-                entry.sig_popcount as f64,
+                pb_closure(entry) as f64,
                 query_hv.hamming(&hv) as f64,
             );
             scored.push((phi, entry.id));

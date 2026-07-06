@@ -132,14 +132,18 @@ impl Embedder for FeatureHashEmbedder {
 
 /// Embedder trait object that owns the Charikar projection matrix
 /// (seed-frozen) so callers can wrap a feature function and get the
-/// canonical projection for free. The matrix is `D × 256 = 2 MiB` of
-/// i8 — allocated once per instance and shared via `Arc`.
+/// canonical projection for free.
+///
+/// Projection (Charikar 2000): For each output bit `i ∈ [0, D)`,
+/// compute `h_i = sign(Σ_{k=0}^{D-1} r_{ik} · v_k)` where `r_{ik} ∈
+/// {+1, -1}` is sampled from a fixed seed. With a dense, mean-zero,
+/// L2-normalized input vector this preserves cosine: independent
+/// vectors stay near 0.5 similarity, correlated vectors rise above
+/// the noise floor. Matrix size: `D × embedder.dim × i8 = 2 MiB` for
+/// `D = 8192` and `dim = 256`.
 pub struct ProjectionEmbedder {
     embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync>,
     dim: usize,
-    /// Fixed-dim projection rows; exactly D_U64×8 entries but laid out
-    /// bit-friendly as a flat `[i8; D * self.dim]` that the projection
-    /// loop reads sequentially.
     projection: Vec<[i8; 256]>,
 }
 
@@ -192,9 +196,8 @@ impl Embedder for ProjectionEmbedder {
     }
 }
 
-/// Build the default embedder: feature-hash + Charikar projection. The
-/// returned `ProjectionEmbedder` is ~2 MiB (the projection matrix) +
-/// ~1 KiB (feature counters).
+/// Build the default embedder: feature-hash + Charikar binary projection.
+/// Returns ~256 KiB of projection matrix + ~1 KiB of feature counters.
 pub fn default_embedder() -> ProjectionEmbedder {
     let inner = Arc::new(FeatureHashEmbedder::new());
     let embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync> = {

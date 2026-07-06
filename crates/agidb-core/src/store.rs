@@ -145,6 +145,9 @@ pub(crate) struct ScanEntry {
     /// Cached popcount of the HV at `sig_offset` — used by the tier-B
     /// phi scoring so the scan does one popcount per pair, not two.
     pub sig_popcount: u32,
+    /// Cached popcount of the embedding HV at `embedding_offset` —
+    /// 0 when no embedder was used at observe time.
+    pub embedding_popcount: u32,
     pub valid_start: DateTime<Utc>,
     pub valid_end: Option<DateTime<Utc>>,
     pub tombstoned: bool,
@@ -275,12 +278,21 @@ impl Store {
                 .read(ep.signature_offset)
                 .map(|hv| hv.popcount())
                 .unwrap_or(0);
+            let embedding_popcount = if ep.embedding_offset > 0 {
+                self.signatures
+                    .read(ep.embedding_offset)
+                    .map(|hv| hv.popcount())
+                    .unwrap_or(0)
+            } else {
+                0
+            };
             entries.push(ScanEntry {
                 id: ep.id.raw(),
                 sig_offset: ep.signature_offset,
                 gist_offset: ep.gist_offset,
                 embedding_offset: ep.embedding_offset,
                 sig_popcount,
+                embedding_popcount,
                 valid_start: ep.valid_time.start,
                 valid_end: ep.valid_time.end,
                 tombstoned: tombstoned.contains(&ep.id.raw()),
@@ -461,6 +473,11 @@ impl Store {
             gist_offset: episode.gist_offset,
             embedding_offset: episode.embedding_offset,
             sig_popcount: signature.popcount(),
+            embedding_popcount: self
+                .signatures
+                .read(episode.embedding_offset)
+                .map(|hv| hv.popcount())
+                .unwrap_or(0),
             valid_start: episode.valid_time.start,
             valid_end: episode.valid_time.end,
             tombstoned: false,
