@@ -18,7 +18,7 @@ pub const D: usize = 8192;
 pub const D_BYTES: usize = D / 8;
 
 /// Dimensionality in `u64` words (128). Used by the hot scan loops.
-const D_U64: usize = D_BYTES / 8;
+pub(crate) const D_U64: usize = D_BYTES / 8;
 
 /// A binary hypervector. Fixed size: 8192 bits / 1024 bytes, aligned
 /// to a 64-byte cache line so AVX-512 / NEON loads can use aligned
@@ -57,6 +57,18 @@ impl HV {
     /// All-zero hypervector. Useful as a bundling accumulator.
     pub const fn zero() -> Self {
         HV([0u8; D_BYTES])
+    }
+
+    /// Construct from a u64 lane array (little-endian; lane i maps to
+    /// bits `[i*64, (i+1)*64)`). Used by the Charikar projection in
+    /// the semantic tier.
+    pub fn from_u64s(words: [u64; D_U64]) -> Self {
+        let mut bytes = [0u8; D_BYTES];
+        for (i, w) in words.iter().enumerate() {
+            let chunk = w.to_le_bytes();
+            bytes[i * 8..i * 8 + 8].copy_from_slice(&chunk);
+        }
+        HV(bytes)
     }
 
     /// Deterministic hypervector derived from a name. Same name always

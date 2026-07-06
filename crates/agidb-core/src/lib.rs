@@ -21,6 +21,7 @@ pub mod hdc;
 pub mod learning_log;
 pub mod recall;
 pub mod self_model;
+pub mod semantic;
 pub mod sensory;
 pub mod signatures;
 pub mod store;
