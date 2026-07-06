@@ -153,6 +153,12 @@ pub struct Episode {
     /// `#[serde(default)]` keeps pre-v2 JSONL exports importable.
     #[serde(default)]
     pub gist_offset: u64,
+    /// Byte offset into `signatures.dat` where the projected semantic
+    /// embedding of `text` lives. Written by `Store::observe` when an
+    /// embedder is supplied; falls back to `signature_offset` for
+    /// stores pre-v3. `#[serde(default)]` keeps pre-v3 imports loadable.
+    #[serde(default)]
+    pub embedding_offset: u64,
     pub triples: Vec<Triple>,
     pub valid_time: TimeRange,
     /// Transaction time — when agidb learned this fact.

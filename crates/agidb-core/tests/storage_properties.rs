@@ -44,6 +44,7 @@ fn sample_episode(id: u64, valid_from: chrono::DateTime<Utc>) -> Episode {
         text: format!("test observation #{id}"),
         signature_offset: 0,
         gist_offset: 0,
+        embedding_offset: 0,
         triples: vec![Triple {
             subject: "Sarah".into(),
             predicate: "recommended".into(),

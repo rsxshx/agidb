@@ -58,6 +58,7 @@ impl System for AgidbSystem {
                 text: d.text.clone(),
                 signature_offset: 0,
                 gist_offset: 0,
+                embedding_offset: 0,
                 triples,
                 valid_time: TimeRange::point(d.valid_start),
                 t_tx_start: d.valid_start,

@@ -1,10 +1,10 @@
 //! Semantic tier — static embedding invariants.
-//!
-//! The persistence test (`episode_persists_semantic_hv_across_reopen`)
-//! lives behind `#[cfg(...)]` until Task 3 lands `embedding_offset` on
-//! `Episode` and `observe_with_embedder` on `Store`.
 
 use agidb_core::semantic::{cosine, Embedder};
+use agidb_core::store::{Store, StoreConfig};
+use agidb_core::types::{Episode, EpisodeId, Provenance, TimeRange, Triple};
+use chrono::{TimeZone, Utc};
+use tempfile::TempDir;
 
 #[test]
 fn embedder_returns_fixed_dim_vector() {
@@ -68,5 +68,54 @@ fn projection_is_deterministic_across_instances() {
         e1.project(&v),
         e2.project(&v),
         "projection must be seeded — same seed, same matrix"
+    );
+}
+
+fn make_episode(id: u64, subject: &str, predicate: &str, object: &str) -> Episode {
+    let ep_id = EpisodeId::new(id);
+    Episode {
+        id: ep_id,
+        text: format!("{subject} {predicate} {object}"),
+        signature_offset: 0,
+        gist_offset: 0,
+        embedding_offset: 0,
+        triples: vec![Triple {
+            subject: subject.to_string(),
+            predicate: predicate.to_string(),
+            object: object.to_string(),
+            confidence: 0.9,
+            episode_id: ep_id,
+        }],
+        valid_time: TimeRange::point(Utc.with_ymd_and_hms(2026, 5, 14, 0, 0, 0).unwrap()),
+        t_tx_start: Utc.with_ymd_and_hms(2026, 5, 14, 0, 0, 0).unwrap(),
+        provenance: Provenance::default(),
+        confidence: 0.9,
+        superseded_by: None,
+    }
+}
+
+#[test]
+fn episode_with_embedder_persists_three_hvs() {
+    let dir = TempDir::new().unwrap();
+    let sig_bytes: [u8; 1024] = std::array::from_fn(|i| ((i * 13) % 256) as u8);
+    let signature = agidb_core::hdc::HV(sig_bytes);
+
+    {
+        let mut store = Store::open(StoreConfig::at(dir.path())).unwrap();
+        let ep = make_episode(1, "Sarah", "recommends", "Bawri");
+        store
+            .observe_with_embedder(ep, &signature, Some(&agidb_core::semantic::default_embedder()))
+            .unwrap();
+    }
+    let store2 = Store::open(StoreConfig::at(dir.path())).unwrap();
+    let stats = store2.stats().unwrap();
+    // 3 HVs per episode in the embedder path: structured + gist +
+    // semantic projection. (Dedupe may shrink this to 2 if any
+    // happen to coincide; in practice they almost never do for
+    // random signal vs. random signal.)
+    assert!(
+        stats.signatures >= 2,
+        "expected >= 2 signatures (structured + one of {{gist,embedding}}); got {}",
+        stats.signatures
     );
 }

@@ -148,6 +148,7 @@ pub fn observe_text<T: TextExtractor>(
         text: text.to_string(),
         signature_offset: 0, // overwritten by Store::observe
         gist_offset: 0,      // overwritten by Store::observe
+        embedding_offset: 0, // overwritten by Store::observe
         triples,
         valid_time,
         t_tx_start: Utc::now(),

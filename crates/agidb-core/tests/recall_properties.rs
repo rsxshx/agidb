@@ -38,6 +38,7 @@ fn make_episode(
         text: text.into(),
         signature_offset: 0,
         gist_offset: 0,
+        embedding_offset: 0,
         triples: vec![Triple {
             subject: subj.into(),
             predicate: pred.into(),

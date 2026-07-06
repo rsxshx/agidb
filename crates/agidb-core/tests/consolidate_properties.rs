@@ -44,6 +44,7 @@ fn observe_triple(
         text: format!("{subj} {pred} {obj}"),
         signature_offset: 0,
         gist_offset: 0,
+        embedding_offset: 0,
         triples,
         valid_time: TimeRange::point(at),
         t_tx_start: at,

@@ -60,11 +60,16 @@ const KEY_FORMAT_VERSION: &str = "format_version";
 
 /// On-disk store format version, persisted in the manifest.
 ///
+/// v3: `Episode` gained `embedding_offset` (a third HV per episode —
+/// the Charikar projection of a static-text embedding). v2 stores fail
+/// to open with `FormatVersion`; export JSONL from a v2 build and
+/// import here (the new field is `#[serde(default)]` so old exports
+/// load).
 /// v2: `Episode` gained `gist_offset` (a second HV per episode in
 /// `signatures.dat`). v1 stores fail to open with `FormatVersion`;
 /// migrate by exporting JSONL from a v1 build and importing here
 /// (`gist_offset` is `#[serde(default)]` so old exports load).
-pub const STORE_FORMAT_VERSION: u32 = 2;
+pub const STORE_FORMAT_VERSION: u32 = 3;
 
 /// Manifest key for the next-concept-id counter (u64).
 const KEY_NEXT_CONCEPT_ID: &str = "next_concept_id";
@@ -133,6 +138,10 @@ pub(crate) struct ScanEntry {
     pub id: u64,
     pub sig_offset: u64,
     pub gist_offset: u64,
+    /// Charikar projection of the static-text embedding, if the
+    /// episode was observed with an embedder. Defaults to 0 (caller
+    /// checks `> 0` before dereferencing); v2 stores always read 0.
+    pub embedding_offset: u64,
     /// Cached popcount of the HV at `sig_offset` — used by the tier-B
     /// phi scoring so the scan does one popcount per pair, not two.
     pub sig_popcount: u32,
@@ -158,6 +167,10 @@ pub struct Store {
     scan_dir: Vec<ScanEntry>,
     /// `episode_id → index into scan_dir` for O(1) updates.
     scan_pos: std::collections::HashMap<u64, usize>,
+    /// Optional static-text embedder (Charikar projection, ~2 MiB of
+    /// frozen matrix). When `None`, the recall cascade skips tier E
+    /// (semantic similarity) entirely. See [`crate::semantic`].
+    pub embedder: Option<std::sync::Arc<dyn crate::semantic::Embedder>>,
 }
 
 impl Store {
@@ -228,6 +241,7 @@ impl Store {
             config,
             scan_dir: Vec::new(),
             scan_pos: std::collections::HashMap::new(),
+            embedder: None,
         };
         store.rebuild_scan_dir()?;
         Ok(store)
@@ -265,6 +279,7 @@ impl Store {
                 id: ep.id.raw(),
                 sig_offset: ep.signature_offset,
                 gist_offset: ep.gist_offset,
+                embedding_offset: ep.embedding_offset,
                 sig_popcount,
                 valid_start: ep.valid_time.start,
                 valid_end: ep.valid_time.end,
@@ -323,16 +338,31 @@ impl Store {
     /// caller to supply unique ids. Collisions overwrite (last-writer-
     /// wins) until a phase-4 sequence-counter lands.
     pub fn observe(&mut self, mut episode: Episode, signature: &HV) -> Result<EpisodeId> {
+        self.observe_with_embedder(episode, signature, None)
+    }
+
+    /// Like [`Store::observe`], but also computes and persists the
+    /// Charikar-projected semantic embedding when `embedder` is `Some`.
+    /// Stores that never call this function remain v2-compatible; tier
+    /// E of recall is skipped when `embedder` is absent.
+    pub fn observe_with_embedder(
+        &mut self,
+        mut episode: Episode,
+        signature: &HV,
+        embedder: Option<&dyn crate::semantic::Embedder>,
+    ) -> Result<EpisodeId> {
         // 1. Append the signatures outside the redb tx — the mmap and
         //    redb have independent commit cycles, but the offsets are
         //    only "live" once the redb row that references them commits,
         //    and a crash before commit leaves at most junk HVs at the
         //    tail of signatures.dat (no dangling reference).
         //
-        //    Two HVs per episode: the caller's structured signature and
-        //    the gist HV of the raw text. Persisting the gist here is
-        //    what lets the tier-C/D scan sweep the mmap instead of
-        //    re-encoding every episode's text per query.
+        //    Up to three HVs per episode: the caller's structured
+        //    signature, the gist HV of the raw text, and (when an
+        //    embedder is supplied) the Charikar-projected semantic
+        //    embedding. Persisting the gist and embedding here is what
+        //    lets the tier-C/D and tier-E scans sweep the mmap instead
+        //    of re-encoding every episode's text per query.
         let offset = self.signatures.append(signature)?;
         episode.signature_offset = offset;
         let gist = crate::episode::encode_gist_signature(&episode.text);
@@ -342,6 +372,16 @@ impl Store {
             offset
         } else {
             self.signatures.append(&gist)?
+        };
+        episode.embedding_offset = if let Some(emb) = embedder {
+            let hv = emb.project_text(&episode.text);
+            if &hv == signature || &hv == &gist {
+                offset
+            } else {
+                self.signatures.append(&hv)?
+            }
+        } else {
+            0
         };
         let episode_id = episode.id;
         let active_dims: Vec<u32> = signature.active_dims().collect();
@@ -419,6 +459,7 @@ impl Store {
             id: episode_id.raw(),
             sig_offset: episode.signature_offset,
             gist_offset: episode.gist_offset,
+            embedding_offset: episode.embedding_offset,
             sig_popcount: signature.popcount(),
             valid_start: episode.valid_time.start,
             valid_end: episode.valid_time.end,
