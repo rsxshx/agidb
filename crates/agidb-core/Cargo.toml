@@ -26,6 +26,7 @@ redb = { workspace = true }
 memmap2 = { workspace = true }
 rand = { workspace = true }
 roaring = { workspace = true }
+ureq = "3.3.0"
 
 [dev-dependencies]
 proptest = { workspace = true }

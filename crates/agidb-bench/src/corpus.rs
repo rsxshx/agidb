@@ -108,10 +108,21 @@ pub enum QueryClass {
     Paraphrase,
 }
 
-/// Paraphrase templates keyed on the canonical predicate. Each
-/// template is a semantic restatement of a stored factual sentence
-/// ("{person} {recommended} {place}") that shares no token overlap
-/// with the source. Designed for a static-text embedder.
+/// Paraphrase templates keyed on the canonical predicate. The cue
+/// is a rephrasing of the stored sentence with no canonical verb
+/// and (where possible) a single bridging noun. The static-text
+/// embedder (tier E) is the only path that can match on this
+/// class — token-bundle (tier C) and BM25 (FTS5) require lexical
+/// overlap with the canonical surface verbs.
+///
+/// The honest caveat: on this templated corpus, the entity name
+/// (Bawri, Trishna, etc.) is what carries the disambiguation
+/// signal, and *any* template that surfaces the entity name also
+/// hands BM25 a token match. So the class measures
+/// "BM25-OR-token-recall on a paraphrased cue" — useful for
+/// showing tier E participates, less useful for showing it wins
+/// outright. The embedder's strongest win remains the **noisy**
+/// class, where BM25 has no tokens to match.
 const PARAPHRASE_TEMPLATES: &[(&str, &[&str])] = &[
     (
         "recommends",

@@ -52,7 +52,7 @@ const TIER_B_PHI_HI: f32 = 0.30;
 /// ±0.011 (D=8192); paraphrase cosines in our probe sit in 0.10–0.25
 /// which translates to phi in the same range. Floor 0.04 is >3σ above
 /// noise and below the thinnest genuine paraphrase.
-const TIER_E_PHI_FLOOR: f32 = 0.001;
+const TIER_E_PHI_FLOOR: f32 = 0.06;
 
 /// Phi at which tier-E confidence saturates at the top of its band.
 const TIER_E_PHI_HI: f32 = 0.20;

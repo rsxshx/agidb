@@ -36,11 +36,16 @@ pub struct AgidbSystem {
 
 impl AgidbSystem {
     pub fn open(root: &Path) -> Result<Self> {
-        let embedder: Arc<dyn agidb_core::semantic::Embedder> =
-            Arc::new(agidb_core::semantic::default_embedder());
         let mut store = Store::open(StoreConfig::at(root))?;
-        // Tier E requires the embedder to be loaded on the Store.
-        store.embedder = Some(embedder.clone());
+        // Plan A: load the model2vec static embedder. Downloads ~30 MB
+        // on first call (cached at ~/.cache/agidb/embedders/potion-base-8M/);
+        // subsequent bench runs read the cache. Tier E (semantic
+        // similarity) fires only when an embedder is installed.
+        store.install_model2vec()?;
+        let embedder: Arc<dyn agidb_core::semantic::Embedder> = store
+            .embedder
+            .clone()
+            .expect("install_model2vec just set it");
         Ok(Self {
             store,
             root: root.to_path_buf(),

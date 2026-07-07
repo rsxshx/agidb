@@ -242,14 +242,14 @@ Honest numbers or none. The deterministic retrieval benchmark (agidb vs SQLite F
 
 ## status
 
-agidb v2 is pre-alpha. **Shipped in this repo:** the HDC kernel + bi-temporal storage + tiered recall cascade (A exact → B phi-corrected structured similarity → **E Charikar-projected static-text-embedding paraphrase retrieval** → C gist → D nearest-neighbor) + consolidation + goals/beliefs (state machine + revisable belief log + revision math) + non-destructive unlearn with 30-day restore window + self-model (learning log + self-vector) + floor-1 sensory buffer with surprise-gated promotion + 13-tool MCP server (Claude Desktop / Cursor) + deterministic benchmark harness (agidb vs SQLite FTS5 BM25 vs naive scan — see [`bench/RESULTS.md`](bench/RESULTS.md)).
+agidb v2 is pre-alpha. **Shipped in this repo:** the HDC kernel + bi-temporal storage + tiered recall cascade (A exact → B phi-corrected structured similarity → **E Charikar-projected `potion-base-8M` static-text-embedding paraphrase retrieval** → C gist → D nearest-neighbor) + consolidation + goals/beliefs (state machine + revisable belief log + revision math) + non-destructive unlearn with 30-day restore window + self-model (learning log + self-vector) + floor-1 sensory buffer with surprise-gated promotion + 13-tool MCP server (Claude Desktop / Cursor) + deterministic benchmark harness (agidb vs SQLite FTS5 BM25 vs naive scan — see [`bench/RESULTS.md`](bench/RESULTS.md)).
 
 **Planned (no code yet):** floor-2 working memory, floor-5 procedural retrieval, multimodal encoding (V-JEPA 2 / Wav2Vec-BERT), BAMS brain-alignment benchmark suite, Python bindings, background consolidation scheduler. The ICLR 2026 MemAgents workshop target is dropped from the critical path; v2.1 multimodal and BAMS remain as design docs under `docs/architecture/`.
 
-**Honest numbers from the 10k-ep benchmark (with tier E enabled, v3 format):**
-- agidb wins **noisy queries** decisively (0.887 hit@1 vs 0.00 for BM25/scan).
+**Honest numbers from the 10k-ep benchmark (with `potion-base-8M` tier E, v3 format):**
+- agidb wins **noisy queries** decisively (0.887 hit@1 vs 0.00 for BM25/scan). The embedder doesn't help here — tier B's phi-corrected HDC similarity survives character-level jitter; BM25 has no tokens to match on at all.
 - agidb ties on **single-entity** queries (1.00 hit@1 all three).
-- agidb wins **paraphrase queries** as a class — tier E recovers from 0.00 (without embedder) to 0.032 (with the current feature-hash embedder). Bottleneck is the embedder, not the projection: a learned 256-d embedder (model2vec-class) is the planned lift.
+- agidb fires **tier E** on **paraphrase** queries (0.032 vs FTS5 0.048) — but on this templated corpus the entity name carries all the disambiguation signal, and any cue that surfaces the entity also gives BM25 a token match. The benchmark doesn't isolate the embedder's value; the noisy class is where it demonstrably wins.
 - agidb loses **exact** (0.000 vs 1.000 FTS5) and **temporal** (0.016 vs 0.452 FTS5) — structural limitations of HDC token-bundle scoring that tier E doesn't address; a lexical inverted-index tier (roadmap) is the right fix. Captured honestly in `bench/RESULTS.md`.
 
 **Honest number from the 100-row extraction gold set:** F1 = 0.592 (P=0.865, R=0.450). The extractor is conservative; OOV paraphrase misses are correctly labeled as expected misses in the gold set.

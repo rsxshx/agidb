@@ -19,6 +19,7 @@ pub mod error;
 pub mod goal;
 pub mod hdc;
 pub mod learning_log;
+pub mod model2vec;
 pub mod recall;
 pub mod self_model;
 pub mod semantic;

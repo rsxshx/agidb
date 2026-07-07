@@ -341,6 +341,19 @@ impl Store {
         Ok(store)
     }
 
+    /// Install a model2vec (`potion-base-8M`) static embedder onto this
+    /// store. Downloads ~30 MB on first call from `huggingface.co` to
+    /// the user's cache dir; subsequent opens read the cache. After
+    /// this call, `observe_with_embedder(.., Some(emb))` will project
+    /// the episode text into a 256-dim semantic HV, and the recall
+    /// cascade will route through tier E.
+    pub fn install_model2vec(&mut self) -> Result<()> {
+        let emb = crate::model2vec::load()
+            .map_err(|e| AgidbError::Internal(format!("model2vec: {e}")))?;
+        self.embedder = Some(std::sync::Arc::new(emb));
+        Ok(())
+    }
+
     /// Persist an Episode + its HV signature in one transactional unit.
     /// Updates the concept index, the concept-by-name lookup, the
     /// concept→episodes multimap, and the inverted index in the same
