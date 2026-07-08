@@ -45,6 +45,12 @@ pub const CONCEPT_EPISODES: MultimapTableDefinition<u64, u64> =
 /// `EpisodeId` low 32 bits (sufficient for v0.1 single-node scale).
 pub const INVERTED_INDEX: TableDefinition<u32, Vec<u8>> = TableDefinition::new("inverted_index");
 
+/// Token → episode-id posting list. Populated from `episode.text` at
+/// observe time; rebuilt from the EPISODES table at open. Drives the
+/// lexical (tier L) recall tier — same posting-list intersection
+/// pattern as BM25, keyed on canonical tokens instead of free text.
+pub const TOKENS: TableDefinition<&str, Vec<u8>> = TableDefinition::new("tokens");
+
 /// Every SemanticAtom by id.
 pub const SEMANTIC_ATOMS: TableDefinition<u64, Vec<u8>> = TableDefinition::new("semantic_atoms");
 
@@ -60,6 +66,7 @@ const KEY_FORMAT_VERSION: &str = "format_version";
 
 /// On-disk store format version, persisted in the manifest.
 ///
+/// v4: added `TOKENS` table for the lexical inverted-index tier.
 /// v3: `Episode` gained `embedding_offset` (a third HV per episode —
 /// the Charikar projection of a static-text embedding). v2 stores fail
 /// to open with `FormatVersion`; export JSONL from a v2 build and
@@ -69,7 +76,7 @@ const KEY_FORMAT_VERSION: &str = "format_version";
 /// `signatures.dat`). v1 stores fail to open with `FormatVersion`;
 /// migrate by exporting JSONL from a v1 build and importing here
 /// (`gist_offset` is `#[serde(default)]` so old exports load).
-pub const STORE_FORMAT_VERSION: u32 = 3;
+pub const STORE_FORMAT_VERSION: u32 = 4;
 
 /// Manifest key for the next-concept-id counter (u64).
 const KEY_NEXT_CONCEPT_ID: &str = "next_concept_id";
@@ -234,6 +241,8 @@ impl Store {
                 let _ = tx.open_table(crate::unlearn::TOMBSTONES)?;
                 // Floor 1 — sensory ring buffer.
                 let _ = tx.open_table(crate::sensory::SENSORY_FRAMES)?;
+                // Lexical-tier inverted index (rebuilt from EPISODES at open).
+                let _ = tx.open_table(TOKENS)?;
             }
             tx.commit()?;
         }
@@ -301,6 +310,53 @@ impl Store {
         for entry in entries {
             self.scan_push(entry);
         }
+
+        // Rebuild the token-level posting list (TOKENS) from the
+        // EPISODES table. The table is a cache — it doesn't have its
+        // own write journal; on every open we recompute it from the
+        // canonical source. Same shape as the scan directory rebuild
+        // above. Required so a v4 store written by an earlier build
+        // reloads correctly.
+        self.rebuild_tokens_table()?;
+
+        Ok(())
+    }
+
+    /// Walk every episode, tokenize its text, and write the TOKENS
+    /// table from scratch. Called by `rebuild_scan_dir` at open.
+    fn rebuild_tokens_table(&mut self) -> Result<()> {
+        let mut postings: std::collections::BTreeMap<String, RoaringBitmap> =
+            std::collections::BTreeMap::new();
+        let read_tx = self.db.begin_read()?;
+        let episodes = read_tx.open_table(EPISODES)?;
+        for entry in episodes.iter()? {
+            let (_, v) = entry?;
+            let ep: Episode = decode(&v.value())?;
+            for token in crate::episode::tokenize(&ep.text) {
+                postings
+                    .entry(token)
+                    .or_default()
+                    .insert(ep.id.raw() as u32);
+            }
+        }
+        drop(read_tx);
+        drop(episodes);
+
+        let tx = self.db.begin_write()?;
+        {
+            let mut table = tx.open_table(TOKENS)?;
+            // Clear stale postings (defensive — on a clean first open
+            // the table is empty).
+            let _ = table.retain(|_, _| false);
+            for (token, bitmap) in postings {
+                let mut bytes = Vec::with_capacity(bitmap.serialized_size());
+                bitmap
+                    .serialize_into(&mut bytes)
+                    .map_err(|e| AgidbError::Internal(format!("tokens encode: {e}")))?;
+                table.insert(token.as_str(), bytes)?;
+            }
+        }
+        tx.commit()?;
         Ok(())
     }
 
@@ -473,6 +529,27 @@ impl Store {
                     .serialize_into(&mut bytes)
                     .map_err(|e| AgidbError::Internal(format!("roaring encode: {e}")))?;
                 inverted.insert(dim, bytes)?;
+            }
+
+            // Token-level posting list for the lexical (tier L) recall.
+            // Same shape as `INVERTED_INDEX` — RoaringBitmap of episode
+            // ids — but keyed on the raw token string, not on a
+            // hash-of-token HV dim. Drives the posting-list intersection
+            // pattern in `tier_l_lexical`.
+            let mut tokens = tx.open_table(TOKENS)?;
+            for token in crate::episode::tokenize(&episode.text) {
+                let existing = tokens.get(token.as_str())?.map(|v| v.value());
+                let mut bitmap = match existing {
+                    Some(bytes) => RoaringBitmap::deserialize_from(bytes.as_slice())
+                        .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?,
+                    None => RoaringBitmap::new(),
+                };
+                bitmap.insert(episode_id.raw() as u32);
+                let mut bytes = Vec::with_capacity(bitmap.serialized_size());
+                bitmap
+                    .serialize_into(&mut bytes)
+                    .map_err(|e| AgidbError::Internal(format!("tokens encode: {e}")))?;
+                tokens.insert(token.as_str(), bytes)?;
             }
         }
         tx.commit()?;

@@ -202,9 +202,11 @@ fn tier_a_filters_by_as_of() {
 fn recall_falls_through_to_gist_when_no_concept_match() {
     let (mut store, _dir) = fresh_store();
     // Entity names (MainCafe, CentralPark) are disjoint from cue
-    // tokens so tier A misses; the cue still shares "cafe", "park",
-    // and "noon" with the episode text so the gist signatures
-    // overlap and tier C lands the match.
+    // tokens so tier A misses. The cue shares "cafe", "park",
+    // "noon", "opens" with the episode text, so the token-level
+    // inverted index (tier L) matches — the cascade short-circuits
+    // at L before tier C. This is the new "better answer" path:
+    // tier L is more precise than tier C for lexical overlap.
     observe_with_encoding(
         &mut store,
         make_episode(
@@ -220,14 +222,20 @@ fn recall_falls_through_to_gist_when_no_concept_match() {
     let r = store
         .recall(&Query::cue("cafe park noon opens"))
         .expect("recall");
-    assert_eq!(r.tier_used, Tier::Gist, "must fall to tier C");
-    assert!(
-        !r.matches.is_empty(),
-        "tier C must return at least one match"
+    assert_eq!(
+        r.tier_used,
+        Tier::Lexical,
+        "tier L must fire on lexical token overlap"
     );
     assert!(
-        r.matches.iter().all(|m| m.confidence < 0.7),
-        "tier C confidence must stay below the tier-A band"
+        !r.matches.is_empty(),
+        "tier L must return at least one match"
+    );
+    assert!(
+        r.matches
+            .iter()
+            .all(|m| m.confidence >= 0.55 && m.confidence <= 0.95),
+        "tier L confidence must sit in [0.55, 0.95]"
     );
 }
 
@@ -456,12 +464,18 @@ fn tier_b_falls_through_when_no_concept_resolves() {
             t(2026, 5, 14),
         ),
     );
-    // No cue token resolves to a concept even fuzzily → cascade must
-    // reach tier C on gist overlap, not die in tier B.
+    // No cue token resolves to a concept even fuzzily. Tier A misses;
+    // tier L *also* matches because "noon" / "opens" / "every" / "day"
+    // appear in both cue and episode text. Tier L short-circuits the
+    // cascade — that's the new better answer for lexical overlap.
     let r = store
         .recall(&Query::cue("opens at noon every day"))
         .expect("recall");
-    assert_eq!(r.tier_used, Tier::Gist);
+    assert_eq!(
+        r.tier_used,
+        Tier::Lexical,
+        "tier L must short-circuit tier B on shared content tokens"
+    );
     assert!(!r.matches.is_empty());
 }
 
@@ -524,7 +538,10 @@ fn recall_works_after_reopen_from_persisted_gist_signatures() {
     let r = store
         .recall(&Query::cue("cafe park noon opens"))
         .expect("recall");
-    assert_eq!(r.tier_used, Tier::Gist);
+    // Reopen must rebuild the TOKENS table from EPISODES (same path
+    // the scan directory rebuild uses); tier L fires on the lexical
+    // overlap of the cue and the stored text.
+    assert_eq!(r.tier_used, Tier::Lexical);
     assert!(!r.matches.is_empty());
 }
 

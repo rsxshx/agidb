@@ -469,6 +469,10 @@ impl Belief {
 pub enum Tier {
     /// Canonical entity match via the concept index.
     Exact,
+    /// Token-level inverted-index posting-list intersection (tier L).
+    /// Closes the exact-class loss where the cue shares tokens with
+    /// the stored text but no canonical concept matches.
+    Lexical,
     /// Role-bound structured HDC signature (phi-corrected).
     Similarity,
     /// Charikar-projected static-text embedding — paraphrase fallback.
@@ -486,10 +490,11 @@ impl Tier {
     pub const fn depth(self) -> u8 {
         match self {
             Tier::Exact => 0,
-            Tier::Similarity => 1,
-            Tier::Semantic => 2,
-            Tier::Gist => 3,
-            Tier::NearestNeighbor => 4,
+            Tier::Lexical => 1,
+            Tier::Similarity => 2,
+            Tier::Semantic => 3,
+            Tier::Gist => 4,
+            Tier::NearestNeighbor => 5,
         }
     }
 }

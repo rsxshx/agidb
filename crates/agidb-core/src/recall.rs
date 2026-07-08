@@ -31,6 +31,7 @@ use crate::hdc::HV;
 use crate::store::{ScanEntry, Store, SEMANTIC_ATOMS};
 use crate::types::*;
 use redb::ReadableTable;
+use roaring::RoaringBitmap;
 use std::collections::HashSet;
 use std::time::Instant;
 
@@ -195,6 +196,19 @@ impl Store {
             }
         }
 
+        // Tier L — lexical inverted-index posting-list intersection.
+        // Closes the exact-class loss where the cue shares tokens with
+        // the stored text but no canonical concept matches (so tier A
+        // misses) and the structured HDC bundle is too sparse to fire
+        // (so tier B misses). Cheaper than tier B: one redb read per
+        // cue token + a bitmap union, no per-row scan.
+        if Tier::Lexical.depth() <= query.tier_floor.depth() {
+            let l = self.tier_l_lexical(query)?;
+            if !l.is_empty() {
+                return Ok(self.finalize(l, query));
+            }
+        }
+
         // Tier B — structured similarity. Resolve cue tokens to known
         // concepts (case-insensitive + fuzzy), bundle their role-bound
         // HVs into a structured cue signature, and phi-score the stored
@@ -298,6 +312,70 @@ impl Store {
                     out.push(into_match(ep, 1.0, Tier::Exact));
                 }
             }
+        }
+        Ok(out)
+    }
+
+    /// Tier L — token-level posting-list intersection. Same pattern as
+    /// BM25's posting-list lookup, keyed on the canonical tokens from
+    /// `crate::episode::tokenize`. Ranks candidates by how many cue
+    /// tokens share a posting list with them; ties broken by episode
+    /// id (deterministic).
+    fn tier_l_lexical(&self, query: &Query) -> Result<Vec<RecallMatch>> {
+        const CONF_LO: f32 = 0.55;
+        const CONF_HI: f32 = 0.95;
+        let cue_tokens: Vec<String> = tokenize(&query.cue);
+        if cue_tokens.is_empty() {
+            return Ok(vec![]);
+        }
+        let now = query.as_of.unwrap_or_else(chrono::Utc::now);
+
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(crate::store::TOKENS)?;
+        let mut counts: std::collections::HashMap<u64, u32> = std::collections::HashMap::new();
+        for token in &cue_tokens {
+            let Some(bytes) = table.get(token.as_str())?.map(|v| v.value()) else {
+                continue;
+            };
+            let bitmap = RoaringBitmap::deserialize_from(bytes.as_slice())
+                .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?;
+            for id in bitmap.iter() {
+                *counts.entry(id as u64).or_insert(0) += 1;
+            }
+        }
+        drop(table);
+        drop(tx);
+
+        if counts.is_empty() {
+            return Ok(vec![]);
+        }
+
+        // Tombstone + bi-temporal filter via the scan directory.
+        let mut candidates: Vec<(u64, u32)> = counts
+            .into_iter()
+            .filter(|(id, _)| {
+                self.scan_entry(*id)
+                    .map(|e| !e.tombstoned && e.valid_at(now))
+                    .unwrap_or(false)
+            })
+            .collect();
+        // Sort: match-count DESC, then id ASC for determinism.
+        candidates.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        let max_count = cue_tokens.len() as u32;
+        let span = (max_count as f32 - 1.0).max(1.0);
+        let mut out = Vec::new();
+        for &(id, count) in &candidates {
+            if out.len() >= query.k {
+                break;
+            }
+            let Some(ep) = self.get_episode(EpisodeId::new(id))? else {
+                continue;
+            };
+            // 1 match → CONF_LO, all cues match → CONF_HI.
+            let confidence = CONF_LO + (CONF_HI - CONF_LO) * (count as f32 - 1.0) / span;
+            let confidence = confidence.clamp(CONF_LO, CONF_HI);
+            out.push(into_match(ep, confidence, Tier::Lexical));
         }
         Ok(out)
     }
