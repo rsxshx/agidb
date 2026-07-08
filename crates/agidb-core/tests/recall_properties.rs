@@ -146,13 +146,18 @@ fn tier_a_returns_episode_when_concept_token_in_cue() {
         .expect("recall");
     assert_eq!(
         r.tier_used,
-        Tier::Exact,
-        "matching concept token must land tier A"
+        Tier::Lexical,
+        "matching concept token must route through tier L (which now subsumes tier A's candidate set via IDF rerank)"
     );
     assert!(r.matches.iter().any(|m| m.episode_id == EpisodeId::new(1)));
+    // Confidence is in the tier L band [0.55, 0.95] — not 1.0
+    // anymore (tier A subsumes into the IDF rerank that picks the
+    // best-scoring candidate at 0.95 and the rest scaled down).
     assert!(
-        r.matches.iter().all(|m| m.confidence >= 0.99),
-        "tier A must return confidence ≈ 1.0"
+        r.matches
+            .iter()
+            .all(|m| m.confidence >= 0.55 && m.confidence <= 0.95),
+        "tier A confidence must sit in [0.55, 0.95]"
     );
 }
 
@@ -364,11 +369,12 @@ fn synthetic_100_episodes_recall_smoke() {
     }
     // 5 * 3 * 5 = 75 episodes (under 100; keeps the test fast).
 
-    // Query a known person → tier A returns all 15 of their episodes.
+    // Query a known person → tier A's concept-rerank path returns all
+    // 15 of their episodes (idf reranked by lexical overlap).
     let r = store
         .recall(&Query::cue("alice").with_k(50))
         .expect("recall");
-    assert_eq!(r.tier_used, Tier::Exact);
+    assert_eq!(r.tier_used, Tier::Lexical);
     assert_eq!(
         r.matches.len(),
         15,
@@ -381,7 +387,7 @@ fn synthetic_100_episodes_recall_smoke() {
     let r = store
         .recall(&Query::cue("trishna").with_k(50))
         .expect("recall");
-    assert_eq!(r.tier_used, Tier::Exact);
+    assert_eq!(r.tier_used, Tier::Lexical);
     assert_eq!(r.matches.len(), 15);
 
     // A vague cue → tier C/D fallback returns *something*.
@@ -394,9 +400,10 @@ fn synthetic_100_episodes_recall_smoke() {
 #[test]
 fn tier_b_matches_case_insensitive_entity_mentions() {
     // "sarah" (lowercase) misses tier A's case-sensitive concept
-    // lookup but resolves case-insensitively in tier B, whose
-    // structured cue signature overlaps the stored role-bound episode
-    // signature. Distractor entities stay in the ≈0.5 noise band.
+    // lookup but resolves case-insensitively in tier L (the new
+    // lexical inverted-index tier lowercases both at write and at
+    // query time). Distractor entities stay below the tier-L
+    // confidence floor.
     let (mut store, _dir) = fresh_store();
     observe_with_encoding(
         &mut store,
@@ -426,8 +433,8 @@ fn tier_b_matches_case_insensitive_entity_mentions() {
     let r = store.recall(&Query::cue("sarah")).expect("recall");
     assert_eq!(
         r.tier_used,
-        Tier::Similarity,
-        "lowercase entity cue must land tier B, got {:?} with {:?}",
+        Tier::Lexical,
+        "lowercase entity cue must land tier L, got {:?} with {:?}",
         r.tier_used,
         r.matches
             .iter()
@@ -440,13 +447,13 @@ fn tier_b_matches_case_insensitive_entity_mentions() {
         "the Sarah episode must rank first"
     );
     assert!(
-        r.matches[0].confidence >= 0.6 && r.matches[0].confidence <= 0.95,
-        "tier B confidence must sit in the [0.6, 0.95] band, got {}",
+        r.matches[0].confidence >= 0.55 && r.matches[0].confidence <= 0.95,
+        "tier L confidence must sit in the [0.55, 0.95] band, got {}",
         r.matches[0].confidence
     );
     assert!(
         !r.matches.iter().any(|m| m.episode_id != EpisodeId::new(1)),
-        "distractor entities must stay below the tier-B floor"
+        "distractor entities must stay below the tier-L floor"
     );
 }
 

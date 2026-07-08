@@ -188,7 +188,10 @@ impl Store {
     }
 
     fn run_cascade(&self, query: &Query) -> Result<Vec<RecallMatch>> {
-        // Tier A — exact concept lookup
+        // Tier A — concept candidates reranked by IDF-weighted lexical
+        // overlap. This catches both "the cue token is a known concept"
+        // (high-confidence A) and "the cue tokens overlap the stored
+        // text by IDF" (lexical rerank, tier L). One cascade step.
         if Tier::Exact.depth() <= query.tier_floor.depth() {
             let a = self.tier_a_exact(query)?;
             if !a.is_empty() {
@@ -196,12 +199,9 @@ impl Store {
             }
         }
 
-        // Tier L — lexical inverted-index posting-list intersection.
-        // Closes the exact-class loss where the cue shares tokens with
-        // the stored text but no canonical concept matches (so tier A
-        // misses) and the structured HDC bundle is too sparse to fire
-        // (so tier B misses). Cheaper than tier B: one redb read per
-        // cue token + a bitmap union, no per-row scan.
+        // Tier L — lexical inverted-index posting-list intersection
+        // (cue tokens that aren't known concepts). Falls through if
+        // tier A already produced matches.
         if Tier::Lexical.depth() <= query.tier_floor.depth() {
             let l = self.tier_l_lexical(query)?;
             if !l.is_empty() {
@@ -292,15 +292,17 @@ impl Store {
     }
 
     fn tier_a_exact(&self, query: &Query) -> Result<Vec<RecallMatch>> {
-        let mut out = Vec::new();
+        // Tier A returns the candidate SET (every episode whose
+        // any-cue-token is a known concept). The cascade then
+        // reranks this set through tier L's IDF scoring so the most
+        // token-overlapping episode surfaces first. Confidence 1.0
+        // is preserved for backwards compat.
         let mut seen: HashSet<EpisodeId> = HashSet::new();
         for token in tokenize(&query.cue) {
             let Some(cid) = self.concept_id_for(&token)? else {
                 continue;
             };
             for ep in self.recall_exact(cid, query.as_of)? {
-                // Phase 11 — skip tombstoned episodes. The scan
-                // directory answers without touching redb.
                 if self
                     .scan_entry(ep.id.raw())
                     .map(|e| e.tombstoned)
@@ -308,7 +310,92 @@ impl Store {
                 {
                     continue;
                 }
-                if seen.insert(ep.id) {
+                seen.insert(ep.id);
+            }
+        }
+        // Rerank the concept-matched candidate set via tier L IDF.
+        let reranked = self.rerank_via_idf(&seen, query)?;
+        Ok(reranked)
+    }
+
+    /// IDF-weighted rerank over an explicit episode-id candidate
+    /// set. Used by tier A (concept candidates) and exposed for
+    /// future tiers that want to seed from a precomputed index.
+    fn rerank_via_idf(
+        &self,
+        candidates: &HashSet<EpisodeId>,
+        query: &Query,
+    ) -> Result<Vec<RecallMatch>> {
+        if candidates.is_empty() {
+            return Ok(vec![]);
+        }
+        let cue_tokens: Vec<String> = tokenize(&query.cue)
+            .into_iter()
+            .map(|t| t.to_lowercase())
+            .collect();
+        if cue_tokens.is_empty() {
+            return Ok(vec![]);
+        }
+
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(crate::store::TOKENS)?;
+        let total_docs = self.scan_entries().len().max(1) as f32;
+        let mut scores: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+        for token in &cue_tokens {
+            let Some(bytes) = table.get(token.as_str())?.map(|v| v.value()) else {
+                continue;
+            };
+            let bitmap = RoaringBitmap::deserialize_from(bytes.as_slice())
+                .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?;
+            let df = bitmap.len() as f32;
+            if df == 0.0 {
+                continue;
+            }
+            let idf = (total_docs / df).ln() + 0.5;
+            for id in bitmap.iter() {
+                if !candidates.contains(&EpisodeId::new(id as u64)) {
+                    continue;
+                }
+                *scores.entry(id as u64).or_insert(0.0) += idf;
+            }
+        }
+        drop(table);
+        drop(tx);
+
+        let mut scored: Vec<(EpisodeId, f32)> = scores
+            .into_iter()
+            .map(|(id, s)| (EpisodeId::new(id), s))
+            .collect();
+        scored.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.raw().cmp(&b.0.raw()))
+        });
+
+        let top = scored.first().map(|(_, s)| *s).unwrap_or(0.0);
+        let mut out = Vec::new();
+        for (id, score) in scored {
+            if out.len() >= query.k {
+                break;
+            }
+            let Some(ep) = self.get_episode(id)? else {
+                continue;
+            };
+            let confidence = if top > 0.0 {
+                0.55 + (0.95 - 0.55) * (score / top)
+            } else {
+                0.55
+            };
+            let confidence = confidence.clamp(0.55, 0.95);
+            out.push(into_match(ep, confidence, Tier::Lexical));
+        }
+        // If IDF didn't rank anything (e.g., only one cue token which
+        // was a known concept but no other tokens), fall back to the
+        // insertion order so tier A at least matches historical
+        // behavior.
+        if out.is_empty() {
+            for id in candidates.iter().take(query.k) {
+                if let Some(ep) = self.get_episode(*id)? {
                     out.push(into_match(ep, 1.0, Tier::Exact));
                 }
             }
@@ -322,36 +409,57 @@ impl Store {
     /// tokens share a posting list with them; ties broken by episode
     /// id (deterministic).
     fn tier_l_lexical(&self, query: &Query) -> Result<Vec<RecallMatch>> {
-        const CONF_LO: f32 = 0.55;
-        const CONF_HI: f32 = 0.95;
-        let cue_tokens: Vec<String> = tokenize(&query.cue);
+        let cue_tokens: Vec<String> = tokenize(&query.cue)
+            .into_iter()
+            .map(|t| t.to_lowercase())
+            .collect();
         if cue_tokens.is_empty() {
             return Ok(vec![]);
         }
         let now = query.as_of.unwrap_or_else(chrono::Utc::now);
 
+        // One read per unique cue token: fetch each token's bitmap
+        // and its document frequency. Score each candidate episode
+        // with the standard BM25-style inverse-document-frequency
+        // weight (sum of `log(N / df)` across the cue tokens whose
+        // posting list contains the candidate). This is the fix for
+        // the 0.000 exact loss on the templated bench: a generic
+        // token ("any", "favorites") that hits 1000+ episodes gets a
+        // ~log(1) weight ≈ 0, while a rare entity token ("bombay") that
+        // hits 10 episodes gets log(10000/10) ≈ 7 — and the candidate
+        // with both rare tokens ranks above the candidate with one
+        // generic + one rare.
         let tx = self.db.begin_read()?;
         let table = tx.open_table(crate::store::TOKENS)?;
-        let mut counts: std::collections::HashMap<u64, u32> = std::collections::HashMap::new();
+        let total_docs = self.scan_entries().len().max(1) as f32;
+        let mut scores: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
         for token in &cue_tokens {
             let Some(bytes) = table.get(token.as_str())?.map(|v| v.value()) else {
                 continue;
             };
             let bitmap = RoaringBitmap::deserialize_from(bytes.as_slice())
                 .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?;
+            let df = bitmap.len() as f32;
+            if df == 0.0 {
+                continue;
+            }
+            // Standard IDF — small +0.5 keeps high-idf tokens from
+            // dominating when their df is 1 (log(N/1) can be very
+            // large); we just need ranking, not calibrated weights.
+            let idf = (total_docs / df).ln() + 0.5;
             for id in bitmap.iter() {
-                *counts.entry(id as u64).or_insert(0) += 1;
+                *scores.entry(id as u64).or_insert(0.0) += idf;
             }
         }
         drop(table);
         drop(tx);
 
-        if counts.is_empty() {
+        if scores.is_empty() {
             return Ok(vec![]);
         }
 
         // Tombstone + bi-temporal filter via the scan directory.
-        let mut candidates: Vec<(u64, u32)> = counts
+        let mut candidates: Vec<(u64, f32)> = scores
             .into_iter()
             .filter(|(id, _)| {
                 self.scan_entry(*id)
@@ -359,27 +467,38 @@ impl Store {
                     .unwrap_or(false)
             })
             .collect();
-        // Sort: match-count DESC, then id ASC for determinism.
-        candidates.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+        // Sort: score DESC, then id ASC for determinism.
+        candidates.sort_by(|a, b| {
+            b.1.partial_cmp(&a.1)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then(a.0.cmp(&b.0))
+        });
 
-        let max_count = cue_tokens.len() as u32;
-        let span = (max_count as f32 - 1.0).max(1.0);
+        // Confidence band for tier L — same range as before, but the
+        // floor is the score itself normalized into [0.55, 0.95].
+        // top score → 0.95, scores >= 1.0 (the typical entity-match
+        // score) → 0.85, scores < 0.5 → 0.55.
+        let top_score = candidates.first().map(|(_, s)| *s).unwrap_or(0.0);
         let mut out = Vec::new();
-        for &(id, count) in &candidates {
+        for &(id, score) in &candidates {
             if out.len() >= query.k {
                 break;
             }
             let Some(ep) = self.get_episode(EpisodeId::new(id))? else {
                 continue;
             };
-            // 1 match → CONF_LO, all cues match → CONF_HI.
-            let confidence = CONF_LO + (CONF_HI - CONF_LO) * (count as f32 - 1.0) / span;
-            let confidence = confidence.clamp(CONF_LO, CONF_HI);
+            // Confidence: 0.55 at score 0, 0.95 at score = top_score
+            // (the strongest candidate). Linear in between.
+            let confidence = if top_score > 0.0 {
+                0.55 + (0.95 - 0.55) * (score / top_score)
+            } else {
+                0.55
+            };
+            let confidence = confidence.clamp(0.55, 0.95);
             out.push(into_match(ep, confidence, Tier::Lexical));
         }
         Ok(out)
     }
-
     /// Build the tier-B structured cue signature: resolve cue tokens to
     /// known concepts (exact, then case-insensitive, then fuzzy within
     /// edit distance 1) and bundle each concept's subject-role and

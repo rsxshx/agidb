@@ -334,7 +334,7 @@ impl Store {
             let ep: Episode = decode(&v.value())?;
             for token in crate::episode::tokenize(&ep.text) {
                 postings
-                    .entry(token)
+                    .entry(token.to_lowercase())
                     .or_default()
                     .insert(ep.id.raw() as u32);
             }
@@ -533,12 +533,14 @@ impl Store {
 
             // Token-level posting list for the lexical (tier L) recall.
             // Same shape as `INVERTED_INDEX` — RoaringBitmap of episode
-            // ids — but keyed on the raw token string, not on a
-            // hash-of-token HV dim. Drives the posting-list intersection
-            // pattern in `tier_l_lexical`.
+            // ids — but keyed on the lowercased raw token string. Drives the
+            // posting-list intersection pattern in `tier_l_lexical`. We
+            // lowercase at write time and at read time so "Sarah" and "sarah"
+            // both collide on the same key.
             let mut tokens = tx.open_table(TOKENS)?;
             for token in crate::episode::tokenize(&episode.text) {
-                let existing = tokens.get(token.as_str())?.map(|v| v.value());
+                let key = token.to_lowercase();
+                let existing = tokens.get(key.as_str())?.map(|v| v.value());
                 let mut bitmap = match existing {
                     Some(bytes) => RoaringBitmap::deserialize_from(bytes.as_slice())
                         .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?,
@@ -549,7 +551,7 @@ impl Store {
                 bitmap
                     .serialize_into(&mut bytes)
                     .map_err(|e| AgidbError::Internal(format!("tokens encode: {e}")))?;
-                tokens.insert(token.as_str(), bytes)?;
+                tokens.insert(key.as_str(), bytes)?;
             }
         }
         tx.commit()?;
