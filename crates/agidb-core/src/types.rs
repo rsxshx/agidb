@@ -93,6 +93,18 @@ impl TimeRange {
     pub fn contains(&self, at: DateTime<Utc>) -> bool {
         at >= self.start && self.end.is_none_or(|e| at < e)
     }
+
+    /// `true` iff `[self.start, self.end.unwrap_or(self.start)]` overlaps
+    /// the half-open query window `[from, to)`. Per the
+    /// `feat/temporal-retrieval` spec the open-ended case treats
+    /// `end` as `start` (point-in-time), so an episode still-current
+    /// in the database is only "in" a window when its start sits in
+    /// the window. That avoids the surprise of a 2026 fact leaking
+    /// into a 2027 query just because nobody superseded it.
+    pub fn overlaps_window(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        let effective_end = self.end.unwrap_or(self.start);
+        self.start <= to && effective_end >= from
+    }
 }
 
 /// Attribution for a write. Every Episode and SemanticAtom traces back
@@ -525,12 +537,42 @@ pub struct Query {
     /// those goals. `0.0` (the default) disables biasing so recall is
     /// purely cue-driven. Phase 9.
     pub goal_bias_weight: f32,
+    /// Optional valid-time window `[from, to)`. Episodes whose
+    /// `valid_time` does not overlap this window are filtered out at
+    /// every tier that sweeps the scan directory. An episode
+    /// counts as in-window if `valid_time.start < to AND
+    /// valid_time.end.unwrap_or(start) >= from`. May be combined with
+    /// `as_of` (point-containment) — the two filters are independent.
+    pub time_window: Option<(DateTime<Utc>, DateTime<Utc>)>,
+    /// Subject / entity filter. When set, the cascade restricts to
+    /// episodes linked to this `ConceptId` via the
+    /// `concept_episodes` multimap (the same index tier-A uses).
+    /// Lets callers ask "every episode about X" as a filter rather
+    /// than a lexical guess. `None` (the default) keeps the original
+    /// cue-driven cascade shape.
+    pub subject: Option<ConceptId>,
+    /// Recency-rerank weight in `[0.0, 1.0]`. When `> 0.0` AND
+    /// `time_anchor` is set, the cue-similarity score is blended with
+    /// a recency score: episodes whose `valid_time` is closer to
+    /// `time_anchor` get a boost. Default `0.0` preserves the
+    /// pre-temporal-recall byte-identical behavior.
+    pub recency_weight: f32,
+    /// Anchor timestamp for recency rerank. Required when
+    /// `recency_weight > 0`. Typically `Utc::now()` for "what
+    /// happened recently?" queries or a date the caller cares
+    /// about for "what was I doing around then?" queries.
+    pub time_anchor: Option<DateTime<Utc>>,
+    /// Half-life in seconds for the recency decay. Episodes with
+    /// `|valid_time.start - time_anchor|` equal to `half_life`
+    /// score `exp(-1) ≈ 0.368`. Default is 7 days. Only consulted
+    /// when `recency_weight > 0`.
+    pub recency_half_life: f32,
 }
 
 impl Query {
     /// Construct a query with sensible defaults: `k = 10`,
     /// `min_confidence = 0.0`, `tier_floor = NearestNeighbor`,
-    /// `goal_bias_weight = 0.0`.
+    /// `goal_bias_weight = 0.0`, all temporal filters off.
     pub fn cue(text: impl Into<String>) -> Self {
         Self {
             cue: text.into(),
@@ -539,6 +581,11 @@ impl Query {
             min_confidence: 0.0,
             tier_floor: Tier::NearestNeighbor,
             goal_bias_weight: 0.0,
+            time_window: None,
+            subject: None,
+            recency_weight: 0.0,
+            time_anchor: None,
+            recency_half_life: DEFAULT_RECENCY_HALF_LIFE,
         }
     }
 
@@ -568,7 +615,72 @@ impl Query {
         self.goal_bias_weight = weight.clamp(0.0, 1.0);
         self
     }
+
+    /// Restrict the cascade to episodes whose `valid_time` overlaps the
+    /// half-open window `[from, to)`. May be combined with
+    /// `as_of` — the two filters are independent (point-containment
+    /// vs. interval-overlap).
+    pub fn with_time_window(mut self, from: DateTime<Utc>, to: DateTime<Utc>) -> Self {
+        self.time_window = Some((from, to));
+        self
+    }
+
+    /// Restrict the cascade to episodes linked to `subject` via the
+    /// `concept_episodes` multimap. The subject is a `ConceptId`,
+    /// typically resolved from a name by the caller (e.g.
+    /// `Store::concept_id_for`). Lets callers ask "every episode about
+    /// X" as a structured filter rather than a lexical guess on the cue.
+    pub fn with_subject(mut self, subject: ConceptId) -> Self {
+        self.subject = Some(subject);
+        self
+    }
+
+    /// Enable recency rerank: blend `cue_score` with a recency score
+    /// `exp(-|valid_time.start - time_anchor| / half_life)` using
+    /// `weight` as the blend factor. Final score = `(1 - w) * cue + w * recency`.
+    /// Requires `time_anchor` to be set. `weight` is clamped to `[0, 1]`.
+    pub fn with_recency_bias(mut self, weight: f32, time_anchor: DateTime<Utc>) -> Self {
+        self.recency_weight = weight.clamp(0.0, 1.0);
+        self.time_anchor = Some(time_anchor);
+        self
+    }
+
+    /// Override the half-life (seconds) used by recency rerank. Default
+    /// is `DEFAULT_RECENCY_HALF_LIFE` (7 days). Useful for queries like
+    /// "what happened in the last hour?" where a 7-day half-life would
+    /// be too flat.
+    pub fn with_recency_half_life(mut self, half_life_seconds: f32) -> Self {
+        self.recency_half_life = half_life_seconds.max(1.0);
+        self
+    }
+
+    /// `true` iff `valid_time` survives the query's combined temporal
+    /// filters. Combines `as_of` (point-containment) and `time_window`
+    /// (interval-overlap). Used by every tier that sweeps the scan
+    /// directory so temporal filtering is consistent across the cascade
+    /// — the same definition everywhere keeps the new
+    /// `time_window`-based queries from accidentally returning
+    /// `as_of`-incompatible episodes or vice versa.
+    pub fn valid_time_passes(&self, valid_time: &TimeRange) -> bool {
+        if let Some(t) = self.as_of {
+            if !valid_time.contains(t) {
+                return false;
+            }
+        }
+        if let Some((from, to)) = self.time_window {
+            if !valid_time.overlaps_window(from, to) {
+                return false;
+            }
+        }
+        true
+    }
 }
+
+/// Default recency half-life: 7 days. Empirically a good default for
+/// personal-scale temporal retrieval — "what happened recently?" gets a
+/// strong boost for events within the last day or two while still
+/// returning week-old events with a non-trivial score.
+pub const DEFAULT_RECENCY_HALF_LIFE: f32 = 7.0 * 24.0 * 60.0 * 60.0;
 
 /// The result of a recall. Per [constitution](../../.specify/memory/constitution.md)
 /// article VI, `Recall::matches` is never empty under the default
@@ -726,5 +838,98 @@ mod tests {
         let e = EpisodeId::new(42);
         assert_eq!(format!("{e}"), "EpisodeId(42)");
         assert_eq!(e.raw(), 42);
+    }
+
+    #[test]
+    fn time_range_overlaps_window_basic() {
+        // Episode valid 2026-05-01..2026-06-01. Window covers the
+        // whole interval: overlap.
+        let start = "2026-05-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let end = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let range = TimeRange {
+            start,
+            end: Some(end),
+        };
+        let from = "2026-04-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let to = "2026-07-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        assert!(range.overlaps_window(from, to));
+    }
+
+    #[test]
+    fn time_range_overlaps_window_partial() {
+        // Episode valid 2026-05-14..2026-05-15. Window covers only
+        // part of it: still overlaps (intersection non-empty).
+        let start = "2026-05-14T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let end = "2026-05-15T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let range = TimeRange {
+            start,
+            end: Some(end),
+        };
+        let from = "2026-05-14T12:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let to = "2026-05-16T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        assert!(range.overlaps_window(from, to));
+    }
+
+    #[test]
+    fn time_range_overlaps_window_disjoint() {
+        // Episode valid in May. Window covers June only: no overlap.
+        let start = "2026-05-14T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let end = "2026-05-15T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let range = TimeRange {
+            start,
+            end: Some(end),
+        };
+        let from = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let to = "2026-07-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        assert!(!range.overlaps_window(from, to));
+    }
+
+    #[test]
+    fn time_range_overlaps_window_unbounded_end_still_works() {
+        // Episode valid from 2026-05-14 with no end. Per the
+        // `feat/temporal-retrieval` spec, an open-ended interval is
+        // treated as a point at `start`, so the episode is "in" the
+        // window iff `start` itself is in `[from, to)`.
+        let start = "2026-05-14T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let range = TimeRange { start, end: None };
+        let from = "2026-05-10T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let to = "2026-05-20T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        assert!(
+            range.overlaps_window(from, to),
+            "open-ended episode with start in the window must overlap"
+        );
+        // But a window that starts after the episode's start does
+        // NOT overlap — the open-ended episode's effective end is its
+        // start, not +inf.
+        let from = "2026-05-20T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let to = "2026-06-01T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        assert!(
+            !range.overlaps_window(from, to),
+            "open-ended episode does NOT overlap a window starting after its start"
+        );
+    }
+
+    #[test]
+    fn query_builder_defaults_disable_temporal_features() {
+        // Default Query must be byte-identical to a v0.1 query — all
+        // temporal filters off so existing callers see no behavior
+        // change.
+        let q = Query::cue("hello");
+        assert!(q.time_window.is_none());
+        assert!(q.subject.is_none());
+        assert_eq!(q.recency_weight, 0.0);
+        assert!(q.time_anchor.is_none());
+        assert_eq!(
+            q.recency_half_life as u32, DEFAULT_RECENCY_HALF_LIFE as u32,
+            "default half-life is 7 days"
+        );
+    }
+
+    #[test]
+    fn query_recency_bias_clamps_weight() {
+        let t = "2026-05-14T00:00:00Z".parse::<DateTime<Utc>>().unwrap();
+        let q = Query::cue("hi").with_recency_bias(2.5, t);
+        assert_eq!(q.recency_weight, 1.0, "weight clamped to 1.0");
+        assert_eq!(q.time_anchor, Some(t));
     }
 }

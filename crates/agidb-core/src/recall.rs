@@ -24,12 +24,46 @@
 //!
 //! Per [constitution](../../.specify/memory/constitution.md) article VI,
 //! recall never returns the empty set under the default `tier_floor`.
+//!
+//! ## Temporal retrieval (v0.2 — `feat/temporal-retrieval`)
+//!
+//! Before this change, recall was purely cue-driven: time was a filter
+//! (`Query::as_of`), never a retrieval key or ranking signal. homn's
+//! recall eval showed that landed at 40% on temporal queries (vs 80%
+//! factual / 100% commitment), because the cue for a temporal question
+//! (e.g. "when did I send the pricing quote") typically shares no
+//! tokens with the answer episode (which contains "Friday" or a date).
+//!
+//! The fix layers four orthogonal temporal retrieval features on top
+//! of the existing cascade without changing its tiers:
+//!
+//! 1. **`Query::time_window`** — an interval-overlap filter applied at
+//!    every tier that sweeps the scan directory. An episode survives
+//!    iff `valid_time.start <= to` and `valid_time.end.unwrap_or(start)`
+//!    is at least `from`. Distinct from `as_of` (point-containment);
+//!    both can be active together.
+//! 2. **`Query::subject`** — a `ConceptId` filter that restricts the
+//!    cascade to episodes linked to that concept via the
+//!    `concept_episodes` multimap. Lets callers ask "every episode
+//!    about X" as a structured filter rather than a lexical guess.
+//! 3. **`Query::recency_weight` / `Query::time_anchor`** — a
+//!    post-cascade rerank blend: `final = (1 - w) * cue_score +
+//!    w * recency`, where `recency = exp(-|valid_time.start - anchor|
+//!    / half_life)` with a default 7-day half-life. `weight = 0.0`
+//!    preserves the pre-temporal-recall behavior exactly.
+//! 4. **`Store::list_episodes_in_range(from, to, limit)`** — a
+//!    chronological listing keyed on `valid_time.start`, exposed
+//!    through `Agidb::timeline(subject, from, to, limit)`.
+//!
+//! All four default to "off" so existing callers see no behavior
+//! change.
 
 use crate::episode::{encode_query_signature, role_obj, role_subj, tokenize};
 use crate::error::{AgidbError, Result};
 use crate::hdc::HV;
 use crate::store::{ScanEntry, Store, SEMANTIC_ATOMS};
 use crate::types::*;
+use chrono::{DateTime, Utc};
 use redb::ReadableTable;
 use roaring::RoaringBitmap;
 use std::collections::HashSet;
@@ -99,6 +133,21 @@ impl Store {
             (false, Vec::new())
         };
 
+        // v0.2 — temporal retrieval: recency rerank. When
+        // `recency_weight > 0.0` AND `time_anchor` is set, blend the
+        // cue-similarity score with a recency score. Default 0.0
+        // preserves the byte-identical pre-temporal-recall behavior.
+        if query.recency_weight > 0.0 {
+            if let Some(anchor) = query.time_anchor {
+                self.apply_recency_rerank(
+                    &mut matches,
+                    query.recency_weight,
+                    anchor,
+                    query.recency_half_life,
+                )?;
+            }
+        }
+
         // Re-sort after biasing and re-apply min_confidence / k.
         matches.retain(|m| m.confidence >= query.min_confidence);
         matches.sort_by(|a, b| {
@@ -159,6 +208,88 @@ impl Store {
         Ok(())
     }
 
+    /// v0.2 — temporal retrieval: recency rerank. Blend each match's
+    /// cue-similarity confidence with a recency score based on how
+    /// close the episode's `valid_time.start` is to `anchor`:
+    ///
+    /// ```text
+    /// recency = exp(-|valid_time.start - anchor| / half_life)
+    /// final   = (1 - w) * cue_score + w * recency
+    /// ```
+    ///
+    /// `weight = 0.0` (the default) disables this pass so callers that
+    /// don't care about time see byte-identical behavior. The blend
+    /// happens after goal-bias so the final sort reflects every
+    /// reranking signal. Symmetric around the anchor — an episode
+    /// dated a week before *or* after scores the same — which matches
+    /// the way homn phrases "around then"-style queries.
+    fn apply_recency_rerank(
+        &self,
+        matches: &mut [RecallMatch],
+        weight: f32,
+        anchor: DateTime<Utc>,
+        half_life_seconds: f32,
+    ) -> Result<()> {
+        if matches.is_empty() || weight <= 0.0 {
+            return Ok(());
+        }
+        let half_life = half_life_seconds.max(1.0);
+        for m in matches.iter_mut() {
+            let Some(entry) = self.scan_entry(m.episode_id.raw()) else {
+                continue;
+            };
+            let dt_seconds = (anchor - entry.valid_start).num_seconds().abs() as f32;
+            // `(-dt/half_life).exp()` stays in (0, 1] for any non-negative
+            // dt. dt of 0 → 1.0; dt = half_life → ~0.368; dt = 4*half_life
+            // → ~0.018. With the default 7-day half-life an episode
+            // dated 7 days from the anchor keeps ~37% of its recency
+            // signal — a soft, easily-tuned knob.
+            let recency = (-dt_seconds / half_life).exp();
+            let cue_score = m.confidence;
+            m.confidence = ((1.0 - weight) * cue_score + weight * recency).clamp(0.0, 1.0);
+        }
+        Ok(())
+    }
+
+    /// v0.2 — temporal retrieval: load the set of episode ids linked
+    /// to `concept` via the `concept_episodes` multimap, restricted to
+    /// the query's temporal filters. Used by the cascade when
+    /// `Query::subject` is set, so the subject filter can be applied
+    /// in O(1) per scan entry without a per-tier concept resolution
+    /// pass.
+    fn subject_episode_set(&self, concept: ConceptId, query: &Query) -> Result<HashSet<EpisodeId>> {
+        let tx = self.db.begin_read()?;
+        let concept_episodes = tx.open_multimap_table(crate::store::CONCEPT_EPISODES)?;
+        let mut set = HashSet::new();
+        for raw in concept_episodes.get(concept.raw())? {
+            let raw_id = raw?.value();
+            // Subject filter + temporal filter can both be enforced
+            // from the scan directory alone — `scan_entry` has the
+            // valid_start / valid_end / tombstoned bit without
+            // deserializing the full `Episode` row. Keeps the
+            // subject-filter precomputation O(N) where N is the size
+            // of the concept's posting list, not N + per-row decode.
+            let Some(entry) = self.scan_entry(raw_id) else {
+                continue;
+            };
+            if entry.tombstoned {
+                continue;
+            }
+            if let Some(t) = query.as_of {
+                if !entry.valid_at(t) {
+                    continue;
+                }
+            }
+            if let Some((from, to)) = query.time_window {
+                if !entry.overlaps_window(from, to) {
+                    continue;
+                }
+            }
+            set.insert(EpisodeId::new(raw_id));
+        }
+        Ok(set)
+    }
+
     /// Look up every `SemanticAtom` whose anchoring concept matches a
     /// token in the cue. O(N) over atoms today; a concept→atoms
     /// inverted index is a phase-6 follow-up.
@@ -188,12 +319,23 @@ impl Store {
     }
 
     fn run_cascade(&self, query: &Query) -> Result<Vec<RecallMatch>> {
+        // v0.2 — temporal retrieval: resolve the subject filter once
+        // and reuse it across every tier that sweeps the scan
+        // directory. Subject episodes also have to satisfy the query's
+        // temporal filters (as_of / time_window) — `subject_episode_set`
+        // applies both up front so the per-tier filter is a single
+        // `HashSet::contains` lookup.
+        let subject_filter: Option<HashSet<EpisodeId>> = match query.subject {
+            Some(cid) => Some(self.subject_episode_set(cid, query)?),
+            None => None,
+        };
+
         // Tier A — concept candidates reranked by IDF-weighted lexical
         // overlap. This catches both "the cue token is a known concept"
         // (high-confidence A) and "the cue tokens overlap the stored
         // text by IDF" (lexical rerank, tier L). One cascade step.
         if Tier::Exact.depth() <= query.tier_floor.depth() {
-            let a = self.tier_a_exact(query)?;
+            let a = self.tier_a_exact(query, subject_filter.as_ref())?;
             if !a.is_empty() {
                 return Ok(self.finalize(a, query));
             }
@@ -203,7 +345,7 @@ impl Store {
         // (cue tokens that aren't known concepts). Falls through if
         // tier A already produced matches.
         if Tier::Lexical.depth() <= query.tier_floor.depth() {
-            let l = self.tier_l_lexical(query)?;
+            let l = self.tier_l_lexical(query, subject_filter.as_ref())?;
             if !l.is_empty() {
                 return Ok(self.finalize(l, query));
             }
@@ -216,7 +358,7 @@ impl Store {
         // on AND-bundled sparse vectors — see phi_from_counts).
         if Tier::Similarity.depth() <= query.tier_floor.depth() {
             if let Some(cue_sig) = self.structured_cue_signature(&query.cue)? {
-                let scored = self.scan_phi(&cue_sig, query);
+                let scored = self.scan_phi(&cue_sig, query, subject_filter.as_ref());
                 let b = self.band_matches(
                     &scored,
                     query,
@@ -244,6 +386,7 @@ impl Store {
                     query,
                     |e| e.embedding_offset,
                     |e| e.embedding_popcount,
+                    subject_filter.as_ref(),
                 );
                 let e = self.band_matches(
                     &scored,
@@ -268,7 +411,8 @@ impl Store {
         // phi is a calibrated follow-up.
         if Tier::Gist.depth() <= query.tier_floor.depth() {
             let query_hv = encode_query_signature(&query.cue);
-            let scored = self.scan_signatures(&query_hv, query, |e| e.gist_offset);
+            let scored =
+                self.scan_signatures(&query_hv, query, |e| e.gist_offset, subject_filter.as_ref());
             let c = self.band_matches(
                 &scored,
                 query,
@@ -291,40 +435,83 @@ impl Store {
         Ok(vec![])
     }
 
-    fn tier_a_exact(&self, query: &Query) -> Result<Vec<RecallMatch>> {
+    fn tier_a_exact(
+        &self,
+        query: &Query,
+        subject_filter: Option<&HashSet<EpisodeId>>,
+    ) -> Result<Vec<RecallMatch>> {
         // Tier A returns the candidate SET (every episode whose
         // any-cue-token is a known concept). The cascade then
         // reranks this set through tier L's IDF scoring so the most
         // token-overlapping episode surfaces first. Confidence 1.0
         // is preserved for backwards compat.
+        //
+        // v0.2 — temporal retrieval: when `subject_filter` is set,
+        // the supplied set already contains the exact set of
+        // subject episodes that pass the temporal filters, so we
+        // skip the cue-token concept resolution entirely and use
+        // the supplied set as the candidate pool. The subject
+        // path then returns every linked episode ranked by IDF
+        // against the cue (so "alice bob wireframe" surfaces
+        // the alice-wireframe episodes first) — if the cue
+        // shares no tokens with any subject episode, the fallback
+        // returns every subject episode in id order. This is the
+        // "every episode about X" path — no lexical guess required.
         let mut seen: HashSet<EpisodeId> = HashSet::new();
-        for token in tokenize(&query.cue) {
-            let Some(cid) = self.concept_id_for(&token)? else {
-                continue;
-            };
-            for ep in self.recall_exact(cid, query.as_of)? {
+        if let Some(subject_set) = subject_filter {
+            for &id in subject_set {
                 if self
-                    .scan_entry(ep.id.raw())
+                    .scan_entry(id.raw())
                     .map(|e| e.tombstoned)
-                    .unwrap_or(false)
+                    .unwrap_or(true)
                 {
                     continue;
                 }
-                seen.insert(ep.id);
+                seen.insert(id);
+            }
+        } else {
+            for token in tokenize(&query.cue) {
+                let Some(cid) = self.concept_id_for(&token)? else {
+                    continue;
+                };
+                for ep in self.recall_exact(cid, query.as_of)? {
+                    if self
+                        .scan_entry(ep.id.raw())
+                        .map(|e| e.tombstoned)
+                        .unwrap_or(false)
+                    {
+                        continue;
+                    }
+                    // v0.2 — temporal retrieval: enforce the time_window
+                    // overlap filter even though `recall_exact` only
+                    // checks `as_of`. They can coexist; `as_of` is
+                    // already handled inside `recall_exact`.
+                    if !query.valid_time_passes(&ep.valid_time) {
+                        continue;
+                    }
+                    seen.insert(ep.id);
+                }
             }
         }
         // Rerank the concept-matched candidate set via tier L IDF.
-        let reranked = self.rerank_via_idf(&seen, query)?;
+        let reranked = self.rerank_via_idf(&seen, query, subject_filter.is_some())?;
         Ok(reranked)
     }
 
-    /// IDF-weighted rerank over an explicit episode-id candidate
-    /// set. Used by tier A (concept candidates) and exposed for
-    /// future tiers that want to seed from a precomputed index.
+    /// IDF-weighted rerank over an explicit episode-id candidate set.
+    /// Used by tier A (concept candidates) and exposed for future
+    /// tiers that want to seed from a precomputed index.
+    ///
+    /// `subject_is_filter = true` (v0.2 — temporal retrieval):
+    /// the caller is in "all episodes about X" mode, so if the cue
+    /// shares no tokens with any candidate we fall back to
+    /// returning every candidate in id order. Otherwise the cue
+    /// must drive the ranking.
     fn rerank_via_idf(
         &self,
         candidates: &HashSet<EpisodeId>,
         query: &Query,
+        subject_is_filter: bool,
     ) -> Result<Vec<RecallMatch>> {
         if candidates.is_empty() {
             return Ok(vec![]);
@@ -362,6 +549,19 @@ impl Store {
         drop(table);
         drop(tx);
 
+        // v0.2 — temporal retrieval: in subject-filter mode every
+        // candidate must come back, even if its text shares no
+        // tokens with the cue. Score-0 entries get hydrated with
+        // the lowest tier-L confidence so the result is sorted by
+        // cue-overlap within the subject set. Without this, a cue
+        // that misses most of the subject's episodes would return
+        // a single top match instead of "every episode about X".
+        if subject_is_filter {
+            for &id in candidates {
+                scores.entry(id.raw()).or_insert(0.0);
+            }
+        }
+
         let mut scored: Vec<(EpisodeId, f32)> = scores
             .into_iter()
             .map(|(id, s)| (EpisodeId::new(id), s))
@@ -381,6 +581,14 @@ impl Store {
             let Some(ep) = self.get_episode(id)? else {
                 continue;
             };
+            // v0.2 — temporal retrieval: enforce the time_window
+            // filter at hydration time. The IDF rerank runs against
+            // the in-memory candidate set (built from cue-token
+            // posting lists) without consulting `valid_time`, so the
+            // filter has to be reapplied once we have the row.
+            if !query.valid_time_passes(&ep.valid_time) {
+                continue;
+            }
             let confidence = if top > 0.0 {
                 0.55 + (0.95 - 0.55) * (score / top)
             } else {
@@ -392,11 +600,32 @@ impl Store {
         // If IDF didn't rank anything (e.g., only one cue token which
         // was a known concept but no other tokens), fall back to the
         // insertion order so tier A at least matches historical
-        // behavior.
+        // behavior. In subject-filter mode the fallback returns every
+        // candidate — "every episode about X" — so a cue that shares
+        // no tokens with the subject's episodes still gets a
+        // meaningful answer.
         if out.is_empty() {
-            for id in candidates.iter().take(query.k) {
-                if let Some(ep) = self.get_episode(*id)? {
-                    out.push(into_match(ep, 1.0, Tier::Exact));
+            let mut sorted_ids: Vec<EpisodeId> = candidates.iter().copied().collect();
+            sorted_ids.sort_by_key(|i| i.raw());
+            let take_count = if subject_is_filter {
+                query.k.max(sorted_ids.len())
+            } else {
+                query.k
+            };
+            for id in sorted_ids.into_iter().take(take_count) {
+                let Some(ep) = self.get_episode(id)? else {
+                    continue;
+                };
+                // v0.2 — temporal retrieval: same time_window check
+                // applies to the fallback so a stale subject set
+                // (built before the filter, hypothetically) can't
+                // surface out-of-window episodes.
+                if !query.valid_time_passes(&ep.valid_time) {
+                    continue;
+                }
+                out.push(into_match(ep, 1.0, Tier::Exact));
+                if out.len() >= query.k {
+                    break;
                 }
             }
         }
@@ -408,7 +637,17 @@ impl Store {
     /// `crate::episode::tokenize`. Ranks candidates by how many cue
     /// tokens share a posting list with them; ties broken by episode
     /// id (deterministic).
-    fn tier_l_lexical(&self, query: &Query) -> Result<Vec<RecallMatch>> {
+    ///
+    /// v0.2 — temporal retrieval: when `subject_filter` is set, only
+    /// episodes in the subject set are kept as candidates. The
+    /// time_window overlap filter is enforced via the scan directory
+    /// entries (every entry's `valid_start` / `valid_end` are in
+    /// memory so the check is a constant-time comparison).
+    fn tier_l_lexical(
+        &self,
+        query: &Query,
+        subject_filter: Option<&HashSet<EpisodeId>>,
+    ) -> Result<Vec<RecallMatch>> {
         let cue_tokens: Vec<String> = tokenize(&query.cue)
             .into_iter()
             .map(|t| t.to_lowercase())
@@ -448,6 +687,13 @@ impl Store {
             // large); we just need ranking, not calibrated weights.
             let idf = (total_docs / df).ln() + 0.5;
             for id in bitmap.iter() {
+                // v0.2 — subject filter: only accumulate score for
+                // episodes that pass the subject constraint.
+                if let Some(set) = subject_filter {
+                    if !set.contains(&EpisodeId::new(id as u64)) {
+                        continue;
+                    }
+                }
                 *scores.entry(id as u64).or_insert(0.0) += idf;
             }
         }
@@ -458,13 +704,32 @@ impl Store {
             return Ok(vec![]);
         }
 
-        // Tombstone + bi-temporal filter via the scan directory.
+        // Tombstone + bi-temporal filter via the scan directory. The
+        // time_window overlap check (v0.2) uses
+        // `TimeRange::overlaps_window` directly on the scan entry's
+        // `valid_start` / `valid_end` so it stays an in-memory op.
+        let window = query.time_window;
         let mut candidates: Vec<(u64, f32)> = scores
             .into_iter()
             .filter(|(id, _)| {
-                self.scan_entry(*id)
-                    .map(|e| !e.tombstoned && e.valid_at(now))
-                    .unwrap_or(false)
+                let Some(entry) = self.scan_entry(*id) else {
+                    return false;
+                };
+                if entry.tombstoned {
+                    return false;
+                }
+                if let Some(t) = query.as_of {
+                    if !entry.valid_at(t) {
+                        return false;
+                    }
+                }
+                if let Some((from, to)) = window {
+                    if !entry.overlaps_window(from, to) {
+                        return false;
+                    }
+                }
+                let _ = now; // keep the closure tidy
+                true
             })
             .collect();
         // Sort: score DESC, then id ASC for determinism.
@@ -551,11 +816,17 @@ impl Store {
     /// the tombstone and bi-temporal filters from the directory itself —
     /// zero redb reads, zero text re-encoding. Returns `(similarity,
     /// episode_id)` sorted by similarity descending.
+    ///
+    /// v0.2 — temporal retrieval: also enforces the query's
+    /// `time_window` overlap filter (when set) and the `subject_filter`
+    /// (when set). Both checks are O(1) per entry so the scan stays
+    /// linear in the number of episodes.
     fn scan_signatures(
         &self,
         query_hv: &HV,
         query: &Query,
         pick: impl Fn(&ScanEntry) -> u64,
+        subject_filter: Option<&HashSet<EpisodeId>>,
     ) -> Vec<(f32, u64)> {
         let mut scored: Vec<(f32, u64)> = Vec::with_capacity(self.scan_entries().len());
         for entry in self.scan_entries() {
@@ -564,6 +835,16 @@ impl Store {
             }
             if let Some(t) = query.as_of {
                 if !entry.valid_at(t) {
+                    continue;
+                }
+            }
+            if let Some((from, to)) = query.time_window {
+                if !entry.overlaps_window(from, to) {
+                    continue;
+                }
+            }
+            if let Some(set) = subject_filter {
+                if !set.contains(&EpisodeId::new(entry.id)) {
                     continue;
                 }
             }
@@ -579,8 +860,19 @@ impl Store {
     /// signatures. Uses the query popcount (computed once) and each
     /// entry's cached `sig_popcount`, so the per-pair cost stays one
     /// POPCOUNT pass (the hamming) — same as the raw-similarity scan.
-    fn scan_phi(&self, query_hv: &HV, query: &Query) -> Vec<(f32, u64)> {
-        self.scan_phi_with_pick(query_hv, query, |e| e.sig_offset, |e| e.sig_popcount)
+    fn scan_phi(
+        &self,
+        query_hv: &HV,
+        query: &Query,
+        subject_filter: Option<&HashSet<EpisodeId>>,
+    ) -> Vec<(f32, u64)> {
+        self.scan_phi_with_pick(
+            query_hv,
+            query,
+            |e| e.sig_offset,
+            |e| e.sig_popcount,
+            subject_filter,
+        )
     }
 
     /// Tier E / generic phi scan: like `scan_phi` but reads from an
@@ -592,12 +884,16 @@ impl Store {
     /// structured signature's density), `embedding_popcount` for tier
     /// E (the projected embedding's own density). Using the wrong one
     /// miscalibrates phi enough to mask the signal.
+    ///
+    /// v0.2 — temporal retrieval: subject filter is forwarded to keep
+    /// every tier consistent.
     fn scan_phi_with_pick(
         &self,
         query_hv: &HV,
         query: &Query,
         pick: impl Fn(&ScanEntry) -> u64,
         pb_closure: impl Fn(&ScanEntry) -> u32,
+        subject_filter: Option<&HashSet<EpisodeId>>,
     ) -> Vec<(f32, u64)> {
         let n = crate::hdc::D as f64;
         let pa = query_hv.popcount() as f64;
@@ -611,6 +907,16 @@ impl Store {
             }
             if let Some(t) = query.as_of {
                 if !entry.valid_at(t) {
+                    continue;
+                }
+            }
+            if let Some((from, to)) = query.time_window {
+                if !entry.overlaps_window(from, to) {
+                    continue;
+                }
+            }
+            if let Some(set) = subject_filter {
+                if !set.contains(&EpisodeId::new(entry.id)) {
                     continue;
                 }
             }

@@ -80,7 +80,7 @@ fn download(repo: &str, file: &str, dest: &Path) -> Result<(), Model2VecError> {
     resp.body_mut()
         .as_reader()
         .read_to_end(&mut bytes)
-        .map_err(|e| Model2VecError::Io(e))?;
+        .map_err(Model2VecError::Io)?;
     std::fs::write(dest, &bytes).map_err(Model2VecError::Io)?;
     Ok(())
 }
@@ -215,8 +215,8 @@ impl Embedder for Model2VecEmbedder {
         for &id in &content {
             let weight = 1.0 / (id as f64 + 2.7);
             let row = (id as usize) * EMBED_DIM;
-            for k in 0..EMBED_DIM {
-                acc[k] += self.embeddings[row + k] as f64 * weight;
+            for (k, slot) in acc.iter_mut().enumerate() {
+                *slot += self.embeddings[row + k] as f64 * weight;
             }
             wsum += weight;
         }
@@ -287,7 +287,7 @@ fn read_safetensors_f32(path: &Path) -> Result<(Vec<f32>, usize, usize), Model2V
     };
     let rows = *a;
     let cols = *b;
-    let expected = (rows * cols * 4) as usize;
+    let expected = rows * cols * 4;
     let data_start = 8 + header_len + offsets[0];
     let data_end = 8 + header_len + offsets[1];
     if data_end - data_start != expected {

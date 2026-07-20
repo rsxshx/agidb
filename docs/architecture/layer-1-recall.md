@@ -340,6 +340,102 @@ async fn apply_bitemporal_filter(
 }
 ```
 
+## Temporal retrieval (v0.2 — `feat/temporal-retrieval`)
+
+Pure cue-driven recall scored 40% on temporal queries in homn's
+eval (vs 80% factual / 100% commitment), because the cue for a
+temporal question — e.g. "when did I send the pricing quote?" —
+typically shares no tokens with the answer episode ("Friday").
+This release adds four orthogonal temporal retrieval features on top
+of the existing cascade without changing its tiers:
+
+| Field on `Query`              | Role                                                    |
+|-------------------------------|---------------------------------------------------------|
+| `time_window: Option<(from, to)>` | interval-overlap filter applied at every tier      |
+| `subject: Option<ConceptId>`  | restrict to episodes linked to a specific concept       |
+| `recency_weight: f32`         | blend cue-similarity with a recency score (post-rank)   |
+| `time_anchor: Option<DateTime>` | anchor timestamp for the recency decay                |
+
+All four default to "off" so existing callers see byte-identical
+behavior.
+
+### `time_window` — interval-overlap filter
+
+```rust
+pub fn overlaps_window(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+    let effective_end = self.end.unwrap_or(self.start);
+    self.start <= to && effective_end >= from
+}
+```
+
+An episode is in-window iff `valid_time.start <= to` AND
+`valid_time.end.unwrap_or(start) >= from`. Per the spec an
+open-ended episode's effective end equals its start (point-in-time
+semantics), so a 2026-01-01 open-ended episode lives only in a
+window containing 2026-01-01 itself — that avoids the surprise of
+a 2026 fact leaking into a 2027 query just because nobody
+superseded it.
+
+The filter applies at every tier that sweeps the scan directory:
+`scan_signatures`, `scan_phi`, `scan_phi_with_pick`, `tier_l_lexical`,
+`tier_a_exact`'s `rerank_via_idf`. `Query::as_of` and
+`time_window` are independent and can be set together.
+
+### `subject` — entity filter
+
+```rust
+pub subject: Option<ConceptId>,
+
+let mut seen = HashSet::new();
+if let Some(subject_set) = subject_filter {
+    for &id in subject_set { seen.insert(id); }
+} else { /* original cue-token concept resolution */ }
+let reranked = self.rerank_via_idf(&seen, query, /*subject_is_filter=*/true)?;
+```
+
+When `subject` is set, the cascade restricts to episodes linked to
+that concept via `concept_episodes`. In "subject-filter" mode the
+IDF rerank fills in score-0 entries for every candidate so the
+result always returns "every episode about X" (sorted by cue
+overlap within the subject set) — a cue that shares no tokens
+with the subject's episodes still surfaces the full set.
+
+### `recency_weight` + `time_anchor` — recency rerank
+
+```rust
+fn apply_recency_rerank(
+    matches: &mut [RecallMatch], weight: f32, anchor: DateTime<Utc>, half_life: f32,
+) {
+    for m in matches.iter_mut() {
+        let dt = (anchor - valid_start).num_seconds().abs() as f32;
+        let recency = (-dt / half_life).exp();
+        m.confidence = (1.0 - weight) * cue_score + weight * recency;
+    }
+}
+```
+
+The blend happens after goal-bias so the final sort reflects every
+reranking signal. Default half-life is 7 days. Symmetric around
+the anchor — an episode dated a week before *or* after scores the
+same — matching homn's "around then"-style phrasing.
+
+### `Store::list_episodes_in_range(from, to, limit)`
+
+```rust
+pub fn list_episodes_in_range(
+    &self, from: DateTime<Utc>, to: DateTime<Utc>, limit: usize,
+) -> Result<Vec<Episode>> {
+    // full scan, filter by overlap, sort by valid_time.start ASC, take limit
+}
+```
+
+Direct chronological listing keyed on `valid_time.start`. Backed
+by a full-table scan today; a secondary index on `valid_time.start`
+is the planned O(log N + k) follow-up (the cost is noted in the
+method's doc comment). Exposed through `Agidb::timeline(subject,
+from, to, limit)` as the direct backing for homn's `timeline`
+MCP tool.
+
 ## Attention trace (floor 7 audit)
 
 When `query.trace_attention = true`, agidb records which signatures were considered, which scored highest, and why each was retained or rejected. The trace lands in floor 7's learning log; the agent can later ask "what was I attending to during recall_id X?"
