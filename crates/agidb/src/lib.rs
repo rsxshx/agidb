@@ -231,6 +231,26 @@ impl Agidb {
         .map_err(|e| agidb_core::AgidbError::Internal(format!("observe join: {e}")))?
     }
 
+    /// Record an observation with an explicit [`ObserveContext`] (observation_time +
+    /// provenance). Use this when the activity happened at a *known* time other than now —
+    /// e.g. replaying captured screen/audio frames where `valid_time` must be the capture
+    /// timestamp, not the ingest timestamp, so bi-temporal / time-window recall works.
+    pub async fn observe_with_context(
+        &self,
+        text: &str,
+        ctx: ObserveContext,
+    ) -> CoreResult<EpisodeId> {
+        let store = self.store.clone();
+        let extractor = self.extractor.clone();
+        let text = text.to_string();
+        tokio::task::spawn_blocking(move || {
+            let mut store = store.lock().expect("store mutex poisoned");
+            observe_text(&mut store, extractor.as_ref(), &text, ctx)
+        })
+        .await
+        .map_err(|e| agidb_core::AgidbError::Internal(format!("observe join: {e}")))?
+    }
+
     // -- read --------------------------------------------------------------
 
     /// Run a tiered recall. Per the constitution, never returns the empty
@@ -270,6 +290,46 @@ impl Agidb {
         })
         .await
         .map_err(|e| agidb_core::AgidbError::Internal(format!("list_episodes join: {e}")))?
+    }
+
+    /// v0.2 — temporal retrieval: return episodes whose `valid_time`
+    /// overlaps the half-open window `[from, to)`, optionally
+    /// restricted to a subject concept. Backed by
+    /// [`Store::list_episodes_in_range`] — the direct layer-3 path
+    /// homn's `timeline(subject, from, to)` MCP tool calls.
+    ///
+    /// When `subject` is `Some(name)`, the name is resolved to a
+    /// [`ConceptId`] via the concept-by-name index and the result is
+    /// filtered to episodes linked to that concept. An unknown name
+    /// returns an empty list (no error) so a stale MCP caller doesn't
+    /// crash the assistant. Episodes are returned in chronological
+    /// order (by `valid_time.start` ascending, then id ascending as
+    /// the deterministic tiebreaker).
+    pub async fn timeline(
+        &self,
+        subject: Option<&str>,
+        from: chrono::DateTime<chrono::Utc>,
+        to: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> CoreResult<Vec<Episode>> {
+        let store = self.store.clone();
+        let subject = subject.map(|s| s.to_string());
+        tokio::task::spawn_blocking(move || {
+            let store = store.lock().expect("store mutex poisoned");
+            let mut episodes = store.list_episodes_in_range(from, to, limit)?;
+            if let Some(name) = subject {
+                let Some(cid) = store.concept_id_for(&name)? else {
+                    return Ok(Vec::new());
+                };
+                let linked = store.recall_exact(cid, None)?;
+                let linked_ids: std::collections::HashSet<EpisodeId> =
+                    linked.into_iter().map(|e| e.id).collect();
+                episodes.retain(|e| linked_ids.contains(&e.id));
+            }
+            Ok(episodes)
+        })
+        .await
+        .map_err(|e| agidb_core::AgidbError::Internal(format!("timeline join: {e}")))?
     }
 
     // -- consolidation -----------------------------------------------------

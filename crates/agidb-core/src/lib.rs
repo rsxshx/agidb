@@ -7,7 +7,9 @@
 //! - [`signatures`] — mmap'd `signatures.dat` (phase 2)
 //! - [`store`]      — redb tables + bi-temporal schema (phase 2)
 //! - [`episode`]    — triple binding and episode bundling (phase 4)
-//! - [`recall`]     — tiered retrieval A/B/C/D (phase 4; B activates in phase 3)
+//! - [`recall`]     — tiered retrieval A/B/C/D + temporal retrieval
+//!   (`Query::time_window` / `Query::subject` / `Query::recency_weight`;
+//!   `feat/temporal-retrieval`)
 //! - `consolidate`  — background consolidation worker (phase 6)
 //!
 //! See `docs/architecture/` and `docs/phases/` for the build plan.

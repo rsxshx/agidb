@@ -10,8 +10,7 @@ use crate::signatures::SignatureFile;
 use crate::types::*;
 use chrono::{DateTime, Duration, Utc};
 use redb::{
-    Database, MultimapTableDefinition, ReadableMultimapTable, ReadableTable, ReadableTableMetadata,
-    TableDefinition,
+    Database, MultimapTableDefinition, ReadableTable, ReadableTableMetadata, TableDefinition,
 };
 use roaring::RoaringBitmap;
 use serde::{Deserialize, Serialize};
@@ -164,6 +163,16 @@ impl ScanEntry {
     /// Bi-temporal filter — mirrors `TimeRange::contains`.
     pub fn valid_at(&self, t: DateTime<Utc>) -> bool {
         t >= self.valid_start && self.valid_end.map(|e| t <= e).unwrap_or(true)
+    }
+
+    /// Half-open window-overlap filter (v0.2 — temporal retrieval).
+    /// `true` iff the episode's effective valid-time (treating
+    /// unbounded end as a point at `valid_start`, per the
+    /// `feat/temporal-retrieval` spec) overlaps `[from, to)`.
+    /// Mirrors [`crate::types::TimeRange::overlaps_window`].
+    pub fn overlaps_window(&self, from: DateTime<Utc>, to: DateTime<Utc>) -> bool {
+        let effective_end = self.valid_end.unwrap_or(self.valid_start);
+        self.valid_start <= to && effective_end >= from
     }
 }
 
@@ -418,7 +427,7 @@ impl Store {
     /// The caller's `episode.id` is used as-is — phase 2 trusts the
     /// caller to supply unique ids. Collisions overwrite (last-writer-
     /// wins) until a phase-4 sequence-counter lands.
-    pub fn observe(&mut self, mut episode: Episode, signature: &HV) -> Result<EpisodeId> {
+    pub fn observe(&mut self, episode: Episode, signature: &HV) -> Result<EpisodeId> {
         self.observe_with_embedder(episode, signature, None)
     }
 
@@ -456,7 +465,7 @@ impl Store {
         };
         episode.embedding_offset = if let Some(emb) = embedder {
             let hv = emb.project_text(&episode.text);
-            if &hv == signature || &hv == &gist {
+            if &hv == signature || hv == gist {
                 offset
             } else {
                 self.signatures.append(&hv)?
@@ -729,6 +738,53 @@ impl Store {
             out.push(decode(&v.value())?);
         }
         Ok(out)
+    }
+
+    /// Return up to `limit` episodes whose `valid_time` overlaps the
+    /// half-open window `[from, to)`, sorted by `valid_time.start`
+    /// ascending. Backs the homn `timeline(subject, from, to)` MCP
+    /// tool.
+    ///
+    /// An episode is "in-window" iff its `valid_time.start < to` AND
+    /// `valid_time.end.unwrap_or(start) >= from` — same definition as
+    /// [`crate::types::TimeRange::overlaps_window`].
+    ///
+    /// Implementation: full-scan the `EPISODES` table, filter by
+    /// overlap, sort the surviving set by start time. A secondary
+    /// index on `valid_time.start` (e.g. a BTree keyed on the encoded
+    /// timestamp with the episode id as the value) would let this run
+    /// in O(log N + k); for the personal-scale store agidb targets in
+    /// v0.1, the full scan is O(N) but trivially fast (redb iter is
+    /// mmap'd and we only decode the rows we keep). That index is a
+    /// planned follow-up; the cost is noted here so future-me doesn't
+    /// mistake the O(N) shape for a bug.
+    pub fn list_episodes_in_range(
+        &self,
+        from: DateTime<Utc>,
+        to: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<Vec<Episode>> {
+        let tx = self.db.begin_read()?;
+        let table = tx.open_table(EPISODES)?;
+        let mut in_window: Vec<Episode> = Vec::new();
+        for entry in table.iter()? {
+            let (_, v) = entry?;
+            let ep: Episode = decode(&v.value())?;
+            if ep.valid_time.overlaps_window(from, to) {
+                in_window.push(ep);
+            }
+        }
+        // Stable sort by valid_time.start ASC, then id ASC for
+        // determinism on ties (two episodes valid from the same
+        // instant must come back in a reproducible order).
+        in_window.sort_by(|a, b| {
+            a.valid_time
+                .start
+                .cmp(&b.valid_time.start)
+                .then(a.id.raw().cmp(&b.id.raw()))
+        });
+        in_window.truncate(limit);
+        Ok(in_window)
     }
 
     /// Dump every Episode (with its HV) as JSON lines. Round-trips

@@ -13,6 +13,11 @@
 //! tier are embedder-agnostic.
 
 use std::hash::{Hash, Hasher};
+
+/// Type alias for the embedder-closure shared by [`ProjectionEmbedder`]
+/// and [`default_embedder`]. Defined up-front so the struct + ctor
+/// signatures stay readable without `clippy::type_complexity` warnings.
+type EmbedFn = dyn Fn(&str) -> Vec<f32> + Send + Sync;
 use std::sync::Arc;
 
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -142,7 +147,7 @@ impl Embedder for FeatureHashEmbedder {
 /// the noise floor. Matrix size: `D × embedder.dim × i8 = 2 MiB` for
 /// `D = 8192` and `dim = 256`.
 pub struct ProjectionEmbedder {
-    embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync>,
+    embed: Arc<EmbedFn>,
     dim: usize,
     projection: Vec<[i8; 256]>,
 }
@@ -150,7 +155,7 @@ pub struct ProjectionEmbedder {
 const CHARIKAR_SEED: u64 = 0xC417_4E5C_4152_4B41; // "CHARIKA" in ASCII
 
 impl ProjectionEmbedder {
-    pub fn new(embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync>, embedder_dim: usize) -> Self {
+    pub fn new(embed: Arc<EmbedFn>, embedder_dim: usize) -> Self {
         assert!(embedder_dim <= 256, "projection rows are [i8; 256]");
         let mut rng = StdRng::seed_from_u64(CHARIKAR_SEED);
         let mut projection: Vec<[i8; 256]> = Vec::with_capacity(crate::hdc::D);
@@ -197,7 +202,7 @@ impl Embedder for ProjectionEmbedder {
 /// Returns ~256 KiB of projection matrix + ~1 KiB of feature counters.
 pub fn default_embedder() -> ProjectionEmbedder {
     let inner = Arc::new(FeatureHashEmbedder::new());
-    let embed: Arc<dyn Fn(&str) -> Vec<f32> + Send + Sync> = {
+    let embed: Arc<EmbedFn> = {
         let inner = inner.clone();
         Arc::new(move |t: &str| inner.embed(t))
     };
