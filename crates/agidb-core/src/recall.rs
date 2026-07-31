@@ -528,17 +528,30 @@ impl Store {
         let table = tx.open_table(crate::store::TOKENS)?;
         let total_docs = self.scan_entries().len().max(1) as f32;
         let mut scores: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+        // See `tier_l_lexical`: normalize confidence against the cue's
+        // achievable IDF mass, not the best score observed, so the
+        // number stays absolute rather than rank-relative.
+        let mut achievable = 0.0f32;
+        // A cue token the store has never indexed is maximally rare —
+        // score it as if df == 1. It can never be matched, so it only
+        // ever raises the denominator, which is the point: asking about
+        // five things when the store knows one of them must not report
+        // the same confidence as asking about the one thing it knows.
+        let unseen_idf = total_docs.ln() + 0.5;
         for token in &cue_tokens {
             let Some(bytes) = table.get(token.as_str())?.map(|v| v.value()) else {
+                achievable += unseen_idf;
                 continue;
             };
             let bitmap = RoaringBitmap::deserialize_from(bytes.as_slice())
                 .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?;
             let df = bitmap.len() as f32;
             if df == 0.0 {
+                achievable += unseen_idf;
                 continue;
             }
             let idf = (total_docs / df).ln() + 0.5;
+            achievable += idf;
             for id in bitmap.iter() {
                 if !candidates.contains(&EpisodeId::new(id as u64)) {
                     continue;
@@ -572,7 +585,6 @@ impl Store {
                 .then(a.0.raw().cmp(&b.0.raw()))
         });
 
-        let top = scored.first().map(|(_, s)| *s).unwrap_or(0.0);
         let mut out = Vec::new();
         for (id, score) in scored {
             if out.len() >= query.k {
@@ -589,8 +601,8 @@ impl Store {
             if !query.valid_time_passes(&ep.valid_time) {
                 continue;
             }
-            let confidence = if top > 0.0 {
-                0.55 + (0.95 - 0.55) * (score / top)
+            let confidence = if achievable > 0.0 {
+                0.55 + (0.95 - 0.55) * (score / achievable)
             } else {
                 0.55
             };
@@ -672,20 +684,36 @@ impl Store {
         let table = tx.open_table(crate::store::TOKENS)?;
         let total_docs = self.scan_entries().len().max(1) as f32;
         let mut scores: std::collections::HashMap<u64, f32> = std::collections::HashMap::new();
+        // Sum of IDF across every cue token that exists in the index —
+        // the score a hypothetical episode containing the whole cue
+        // would earn. Confidence is normalized against *this*, not
+        // against the best score actually observed, so the number means
+        // "how much of the cue did this episode account for" rather
+        // than "did this episode come first".
+        let mut achievable = 0.0f32;
+        // A cue token the store has never indexed is maximally rare —
+        // score it as if df == 1. It can never be matched, so it only
+        // ever raises the denominator, which is the point: asking about
+        // five things when the store knows one of them must not report
+        // the same confidence as asking about the one thing it knows.
+        let unseen_idf = total_docs.ln() + 0.5;
         for token in &cue_tokens {
             let Some(bytes) = table.get(token.as_str())?.map(|v| v.value()) else {
+                achievable += unseen_idf;
                 continue;
             };
             let bitmap = RoaringBitmap::deserialize_from(bytes.as_slice())
                 .map_err(|e| AgidbError::Internal(format!("tokens decode: {e}")))?;
             let df = bitmap.len() as f32;
             if df == 0.0 {
+                achievable += unseen_idf;
                 continue;
             }
             // Standard IDF — small +0.5 keeps high-idf tokens from
             // dominating when their df is 1 (log(N/1) can be very
             // large); we just need ranking, not calibrated weights.
             let idf = (total_docs / df).ln() + 0.5;
+            achievable += idf;
             for id in bitmap.iter() {
                 // v0.2 — subject filter: only accumulate score for
                 // episodes that pass the subject constraint.
@@ -739,11 +767,13 @@ impl Store {
                 .then(a.0.cmp(&b.0))
         });
 
-        // Confidence band for tier L — same range as before, but the
-        // floor is the score itself normalized into [0.55, 0.95].
-        // top score → 0.95, scores >= 1.0 (the typical entity-match
-        // score) → 0.85, scores < 0.5 → 0.55.
-        let top_score = candidates.first().map(|(_, s)| *s).unwrap_or(0.0);
+        // Confidence band for tier L — [0.55, 0.95], linear in the
+        // fraction of the cue's achievable IDF mass this episode
+        // accounts for. Normalizing against `achievable` rather than
+        // the observed top score is what keeps the number absolute:
+        // an episode that matches one rare token out of five reports
+        // ~0.6 whether or not something better exists, instead of
+        // being promoted to 0.95 for merely sorting first.
         let mut out = Vec::new();
         for &(id, score) in &candidates {
             if out.len() >= query.k {
@@ -752,10 +782,8 @@ impl Store {
             let Some(ep) = self.get_episode(EpisodeId::new(id))? else {
                 continue;
             };
-            // Confidence: 0.55 at score 0, 0.95 at score = top_score
-            // (the strongest candidate). Linear in between.
-            let confidence = if top_score > 0.0 {
-                0.55 + (0.95 - 0.55) * (score / top_score)
+            let confidence = if achievable > 0.0 {
+                0.55 + (0.95 - 0.55) * (score / achievable)
             } else {
                 0.55
             };

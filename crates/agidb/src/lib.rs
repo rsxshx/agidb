@@ -300,11 +300,16 @@ impl Agidb {
     ///
     /// When `subject` is `Some(name)`, the name is resolved to a
     /// [`ConceptId`] via the concept-by-name index and the result is
-    /// filtered to episodes linked to that concept. An unknown name
-    /// returns an empty list (no error) so a stale MCP caller doesn't
-    /// crash the assistant. Episodes are returned in chronological
-    /// order (by `valid_time.start` ascending, then id ascending as
-    /// the deterministic tiebreaker).
+    /// filtered to episodes linked to that concept. The lookup is
+    /// **case-insensitive**: the caller here is typically an LLM
+    /// driving the MCP `timeline` tool, and it will write `"sarah"`
+    /// as readily as `"Sarah"` — an exact-match lookup turns that
+    /// into a silent empty result, which reads to the model as "no
+    /// such memories" rather than "wrong casing". An unknown name
+    /// still returns an empty list (no error) so a stale MCP caller
+    /// doesn't crash the assistant. Episodes are returned in
+    /// chronological order (by `valid_time.start` ascending, then id
+    /// ascending as the deterministic tiebreaker).
     pub async fn timeline(
         &self,
         subject: Option<&str>,
@@ -318,7 +323,13 @@ impl Agidb {
             let store = store.lock().expect("store mutex poisoned");
             let mut episodes = store.list_episodes_in_range(from, to, limit)?;
             if let Some(name) = subject {
-                let Some(cid) = store.concept_id_for(&name)? else {
+                // Exact match first (cheap indexed lookup), then fall
+                // back to the case-insensitive scan.
+                let resolved = match store.concept_id_for(&name)? {
+                    Some(cid) => Some(cid),
+                    None => store.concept_id_for_ci(&name.to_lowercase())?,
+                };
+                let Some(cid) = resolved else {
                     return Ok(Vec::new());
                 };
                 let linked = store.recall_exact(cid, None)?;

@@ -459,3 +459,107 @@ fn unlearn_report_carries_full_cascade_summary() {
     assert!(report.episodes_removed > 0);
     assert!(report.tombstone_expiry > Utc::now());
 }
+
+// ---------------------------------------------------------------------------
+// Tombstone visibility across every user-facing read path.
+//
+// `recall()` has always honored the tombstone flag, but the direct
+// listing/fetch paths read the `EPISODES` table without consulting the
+// scan directory, so an unlearned episode came back verbatim. That
+// breaks the article XVI guarantee at the surfaces the CLI, the MCP
+// `timeline` tool, and consolidation actually use.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn list_episodes_hides_tombstoned() {
+    let (mut store, _d) = fresh_store();
+    let _ = observe_triple(&mut store, 1, "Sarah", "likes", "thai");
+    let _ = observe_triple(&mut store, 2, "Marco", "likes", "pizza");
+
+    store
+        .unlearn(UnlearnTarget::Episode(EpisodeId::new(1)), "gdpr erasure")
+        .expect("unlearn");
+
+    let listed = store.list_episodes(10).expect("list");
+    assert!(
+        listed.iter().all(|e| e.id != EpisodeId::new(1)),
+        "unlearned episode must not appear in list_episodes, got {:?}",
+        listed.iter().map(|e| e.id.raw()).collect::<Vec<_>>()
+    );
+    assert_eq!(listed.len(), 1, "the surviving episode must still list");
+}
+
+#[test]
+fn list_episodes_in_range_hides_tombstoned() {
+    let (mut store, _d) = fresh_store();
+    let _ = observe_triple(&mut store, 1, "Sarah", "likes", "thai");
+    let _ = observe_triple(&mut store, 2, "Marco", "likes", "pizza");
+
+    store
+        .unlearn(UnlearnTarget::Episode(EpisodeId::new(1)), "gdpr erasure")
+        .expect("unlearn");
+
+    let from = Utc::now() - chrono::Duration::days(1);
+    let to = Utc::now() + chrono::Duration::days(1);
+    let listed = store.list_episodes_in_range(from, to, 10).expect("range");
+    assert!(
+        listed.iter().all(|e| e.id != EpisodeId::new(1)),
+        "unlearned episode must not appear in list_episodes_in_range"
+    );
+    assert_eq!(listed.len(), 1);
+}
+
+#[test]
+fn get_episode_hides_tombstoned() {
+    let (mut store, _d) = fresh_store();
+    let _ = observe_triple(&mut store, 1, "Sarah", "likes", "thai");
+
+    store
+        .unlearn(UnlearnTarget::Episode(EpisodeId::new(1)), "gdpr erasure")
+        .expect("unlearn");
+
+    assert!(
+        store.get_episode(EpisodeId::new(1)).expect("get").is_none(),
+        "a direct fetch by id must not resurrect an unlearned episode"
+    );
+}
+
+#[test]
+fn recall_exact_hides_tombstoned() {
+    let (mut store, _d) = fresh_store();
+    let _ = observe_triple(&mut store, 1, "Sarah", "likes", "thai");
+    let _ = observe_triple(&mut store, 2, "Sarah", "lives", "Bandra");
+    let cid = store.concept_id_for("Sarah").unwrap().unwrap();
+
+    store
+        .unlearn(UnlearnTarget::Episode(EpisodeId::new(1)), "gdpr erasure")
+        .expect("unlearn");
+
+    let hits = store.recall_exact(cid, None).expect("recall_exact");
+    assert!(
+        hits.iter().all(|e| e.id != EpisodeId::new(1)),
+        "concept-indexed fetch must skip tombstoned episodes"
+    );
+    assert_eq!(hits.len(), 1);
+}
+
+#[test]
+fn restore_makes_episode_listable_again() {
+    let (mut store, _d) = fresh_store();
+    let _ = observe_triple(&mut store, 1, "Sarah", "likes", "thai");
+
+    let report = store
+        .unlearn(UnlearnTarget::Episode(EpisodeId::new(1)), "mistake")
+        .expect("unlearn");
+    assert!(store.list_episodes(10).expect("list").is_empty());
+
+    store
+        .restore_within_window(report.audit_event_id)
+        .expect("restore");
+    let listed = store.list_episodes(10).expect("list");
+    assert_eq!(
+        listed.len(),
+        1,
+        "restore within the 30-day window must make the episode visible again"
+    );
+}
