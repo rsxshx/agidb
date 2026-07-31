@@ -126,7 +126,14 @@ impl Store {
         let table = tx.open_table(EPISODES)?;
         let mut out = Vec::new();
         for entry in table.iter()? {
-            let (_, v) = entry?;
+            let (k, v) = entry?;
+            // Article XVI: an unlearned episode must not be able to
+            // re-enter the store's content through a semantic atom
+            // minted after the erasure. Skipping it here is what keeps
+            // consolidation from laundering tombstoned text.
+            if self.is_tombstoned(k.value()) {
+                continue;
+            }
             let bytes = v.value();
             let ep: Episode = bincode::deserialize(&bytes)
                 .map_err(|e| AgidbError::Internal(format!("decode ep: {e}")))?;

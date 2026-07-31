@@ -390,6 +390,19 @@ impl Store {
         self.scan_pos.get(&id).map(|&pos| &self.scan_dir[pos])
     }
 
+    /// Is this episode tombstoned? The scan directory answers without
+    /// touching redb.
+    ///
+    /// Constitution article XVI: unlearned data must be invisible to
+    /// every read path, not just `recall()`. The `EPISODES` table keeps
+    /// the row so `restore_within_window` can bring it back, so a read
+    /// that goes to `EPISODES` directly — a listing, a fetch by id, the
+    /// concept index, the consolidation sweep — has to ask this before
+    /// handing the row out. Unknown ids are not tombstoned.
+    pub(crate) fn is_tombstoned(&self, id: u64) -> bool {
+        self.scan_entry(id).map(|e| e.tombstoned).unwrap_or(false)
+    }
+
     /// Flip the tombstone flag on one episode's scan entry. Called by
     /// the unlearn/restore paths right after they mutate `TOMBSTONES`.
     pub(crate) fn scan_set_tombstoned(&mut self, id: u64, tombstoned: bool) {
@@ -615,6 +628,9 @@ impl Store {
     pub fn get_episode(&self, id: EpisodeId) -> Result<Option<Episode>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(EPISODES)?;
+        if self.is_tombstoned(id.raw()) {
+            return Ok(None);
+        }
         match table.get(id.raw())? {
             Some(v) => Ok(Some(decode::<Episode>(&v.value())?)),
             None => Ok(None),
@@ -647,6 +663,9 @@ impl Store {
         let mut results = Vec::new();
         for raw in concept_episodes.get(concept.raw())? {
             let raw_id = raw?.value();
+            if self.is_tombstoned(raw_id) {
+                continue;
+            }
             if let Some(v) = episodes.get(raw_id)? {
                 let ep: Episode = decode(&v.value())?;
                 if let Some(t) = as_of {
@@ -734,7 +753,10 @@ impl Store {
             if out.len() >= limit {
                 break;
             }
-            let (_, v) = entry?;
+            let (k, v) = entry?;
+            if self.is_tombstoned(k.value()) {
+                continue;
+            }
             out.push(decode(&v.value())?);
         }
         Ok(out)
@@ -768,7 +790,10 @@ impl Store {
         let table = tx.open_table(EPISODES)?;
         let mut in_window: Vec<Episode> = Vec::new();
         for entry in table.iter()? {
-            let (_, v) = entry?;
+            let (k, v) = entry?;
+            if self.is_tombstoned(k.value()) {
+                continue;
+            }
             let ep: Episode = decode(&v.value())?;
             if ep.valid_time.overlaps_window(from, to) {
                 in_window.push(ep);
