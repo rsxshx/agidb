@@ -336,4 +336,25 @@ async fn timeline_with_subject_filter_via_facade() {
         .await
         .expect("timeline");
     assert!(empty.is_empty());
+
+    // Casing must not decide whether the caller gets an answer. The
+    // MCP `timeline` tool is driven by an LLM, which writes "Alice"
+    // and "ALICE" as readily as the stored "alice"; an exact-match
+    // lookup turned those into a silent empty result.
+    for variant in ["Alice", "ALICE", "aLiCe"] {
+        let hits = db
+            .timeline(
+                Some(variant),
+                now - Duration::days(1),
+                now + Duration::days(1),
+                100,
+            )
+            .await
+            .expect("timeline");
+        assert_eq!(
+            hits.len(),
+            3,
+            "subject {variant:?} must resolve case-insensitively to alice's 3 episodes"
+        );
+    }
 }
